@@ -167,6 +167,19 @@ pub async fn erc1155_balance_of(client: &Client, rpc_url: &str, token: &str, own
     Ok(json!({"raw": raw, "decoded": decoded}))
 }
 
+pub async fn get_block_number(client: &Client, rpc_url: &str) -> Result<Value> {
+    let payload = json!({
+        "jsonrpc": "2.0",
+        "method": "eth_blockNumber",
+        "params": [],
+        "id": 1
+    });
+    let resp = client.post(rpc_url).json(&payload).send().await?;
+    let v: Value = resp.json().await?;
+    if let Some(err) = v.get("error") { return Err(anyhow!("eth_blockNumber error: {}", err)); }
+    Ok(v["result"].clone())
+}
+
 pub async fn erc20_allowance(client: &Client, rpc_url: &str, token: &str, owner: &str, spender: &str) -> Result<Value> {
     let owner_addr = Address::from_str(owner)?;
     let spender_addr = Address::from_str(spender)?;

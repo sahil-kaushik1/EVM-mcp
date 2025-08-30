@@ -1704,6 +1704,24 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
                 Err(e) => e,
             }
         }
+        "get_block_number" => {
+            let res: Result<Response, Response> = (async {
+                let mut chain_id = args.get("chain_id").or_else(|| args.get("network")).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "1".to_string());
+                chain_id = normalize_chain_id(&chain_id);
+                let rpc_url = state.config.chain_rpc_urls.get(&chain_id).ok_or_else(|| Response::error(req_id.clone(), error_codes::INVALID_PARAMS, format!("RPC URL not configured for chain_id '{}'", chain_id)))?;
+                let client = Client::new();
+                let block_number = crate::blockchain::services::token::get_block_number(&client, rpc_url).await
+                    .map_err(|e| Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string()))?;
+                Ok(Response::success(req_id.clone(), json!({
+                    "data": block_number,
+                    "content": [{"type":"text","text": format!("Current block number: {}", block_number)}]
+                })))
+            }).await;
+            match res {
+                Ok(r) => r,
+                Err(e) => e,
+            }
+        }
         "get_nft_balance" | "get-nft-balance" => {
             let res: Result<Response, Response> = (async {
                 let mut chain_id = args
@@ -2391,6 +2409,11 @@ fn handle_tools_list(req: &Request) -> Response {
             "name": "write_contract",
             "description": "Write to a contract via ABI (signed tx).",
             "inputSchema": {"type": "object", "properties": {"private_key": {"type": "string"}, "contractAddress": {"type": "string"}, "abi": {"type": "string"}, "functionName": {"type": "string"}, "args": {"type": "array"}, "chain_id": {"type": "string"}, "network": {"type": "string"}, "gas_limit": {"type": "string"}, "gas_price": {"type": "string"}}, "required": ["private_key", "contractAddress", "abi", "functionName"]}
+        },
+        {
+            "name": "get_block_number",
+            "description": "Get the current block number for a blockchain network.",
+            "inputSchema": {"type": "object", "properties": {"chain_id": {"type": "string", "description": "Chain ID (1 for Ethereum, 11155111 for Sepolia)"}, "network": {"type": "string", "description": "Alternative to chain_id"}}, "additionalProperties": false}
         },
     ]);
     Response::success(req.id.clone(), json!({ "tools": tools }))
