@@ -1,8 +1,8 @@
-# Sei MCP Server (binary: `seiyn_mcp`)
+# EVM MCP Server (binary: `evm_mcp`)
 
-Rust-based HTTP + MCP server for interacting with Sei (Cosmos/EVM) networks. It exposes:
+Rust-based HTTP + MCP server for interacting with EVM-compatible networks. It exposes:
 
-- HTTP REST API (Axum) for wallet, balance, faucet, contract inspection, and SeiStream-like queries
+- HTTP REST API (Axum) for wallet, balance, faucet, contract inspection, and transaction queries
 - MCP (Model Context Protocol) over stdin/stdout for tool integration; also bridged via HTTP `/rpc`
 
 Source layout:
@@ -10,7 +10,7 @@ Source layout:
 - `src/lib.rs` — `AppState` and module exports
 - `src/config.rs` — environment-driven configuration
 - `src/api/` — HTTP route handlers (balance, faucet, wallet, contracts, etc.)
-- `src/blockchain/` — chain clients, services, nonce manager
+- `src/blockchain/` — EVM clients, services, nonce manager
 - `src/mcp/` — MCP protocol, handler, wallet storage
 
 ## Quick start
@@ -46,27 +46,22 @@ cargo build --release
 
 ## Configuration
 
-Configuration is loaded from environment variables in `.env` via `Config::from_env()` (`src/config.rs`). Required/important keys:
+Configuration is loaded from environment variables in `.env` via `Config::from_env()`. Required/important keys:
 
 - CHAIN_RPC_URLS (required): JSON map of `chain_id -> RPC URL`.
   Example:
   ```json
-  {"sei-evm-testnet":"https://evm-rpc-testnet.sei-apis.com","atlantic-2":"https://rpc-testnet.sei-apis.com","sei-evm-mainnet":"https://evm-rpc.sei-apis.com","pacific-1":"https://sei-rpc.polkachu.com"}
+  {"1":"https://mainnet.infura.io/v3/YOUR_KEY","11155111":"https://sepolia.infura.io/v3/YOUR_KEY"}
   ```
-- FAUCET_API_URL (required): Base URL of faucet HTTP service the server proxies to.
+- FAUCET_API_URL (optional): Base URL of faucet HTTP service the server proxies to.
 - PORT (optional, default 8080): HTTP server port.
 - WEBSOCKET_URL (optional): Websocket endpoint if needed by clients/services.
 - DISCORD_API_URL (optional): External Discord API base URL to proxy to.
-- TX_PRIVATE_KEY_EVM (optional): EVM private key used for non-faucet transaction paths.
-  - Fallbacks: FAUCET_PRIVATE_KEY_EVM, FAUCET_PRIVATE_KEY.
+- TX_PRIVATE_KEY (optional): EVM private key used for transaction paths.
 - DEFAULT_SENDER_ADDRESS (optional): Default address for transactions.
-  - Fallback: FAUCET_ADDRESS.
-- NATIVE_DENOM (optional, default `usei`). Fallback: FAUCET_DENOM.
-- NATIVE_GAS_LIMIT (optional, default `200000`). Fallback: FAUCET_GAS_LIMIT.
-- NATIVE_FEE_AMOUNT (optional, default `5000`). Fallback: FAUCET_FEE_AMOUNT.
-- NATIVE_CHAIN_ID (optional, default `atlantic-2`).
-- NATIVE_BECH32_HRP (optional, default `sei`).
-- Discord (all optional): DISCORD_WEBHOOK_URL, DISCORD_BOT_TOKEN, DISCORD_CHANNEL_ID.
+- NATIVE_DENOM (optional, default `wei`). For EVM, this is typically `wei`.
+- DEFAULT_GAS_LIMIT (optional, default `300000`).
+- DEFAULT_GAS_PRICE (optional, default `20000000000`).
 
 See `env.example` for a reference template.
 
@@ -84,8 +79,6 @@ Defined in `src/main.rs` with Axum routes.
 - GET `/contract/:chain_id/:address/transactions`
 - GET `/contract/:chain_id/:address/is_contract`
 - POST `/api/discord/post`
-- GET `/redirect/seidocs`
-- POST `/api/faucet/request`
 - POST `/api/tx/send`
 - GET `/api/chain/network`
 - GET `/api/transactions/evm/:hash`
@@ -105,21 +98,21 @@ curl -s http://127.0.0.1:8080/api/health
 
 Balance:
 ```bash
-curl -s http://127.0.0.1:8080/api/balance/atlantic-2/<sei_or_evm_address>
+curl -s http://127.0.0.1:8080/api/balance/1/0x742d35Cc6634C0532925a3b844Bc454e4438f44e
 ```
 
 Faucet request:
 ```bash
 curl -X POST http://127.0.0.1:8080/api/faucet/request \
   -H 'Content-Type: application/json' \
-  -d '{"chain_id":"atlantic-2","address":"<address>","amount": "100000"}'
+  -d '{"chain_id":"11155111","address":"0x742d35Cc6634C0532925a3b844Bc454e4438f44e","amount": "1000000000000000000"}'
 ```
 
 MCP over HTTP `/rpc`:
 ```bash
 curl -X POST http://127.0.0.1:8080/rpc \
   -H 'Content-Type: application/json' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"<mcp_method>","params":{}}'
+  -d '{"jsonrpc":"2.0","id":1,"method":"get_balance","params":{"chain_id":"1","address":"0x742d35Cc6634C0532925a3b844Bc454e4438f44e"}}'
 ```
 
 ## MCP integration
@@ -130,13 +123,12 @@ curl -X POST http://127.0.0.1:8080/rpc \
 ```json
 {
   "mcpServers": {
-    "sei-mcp-release": {
-      "command": "PATH_TO_REPO/sei-mcp/mcp-server/target/release/seiyn_mcp",
+    "evm-mcp": {
+      "command": "PATH_TO_REPO/mcp-server/target/release/evm_mcp",
       "args": ["--mcp"],
       "env": {
-        "CHAIN_RPC_URLS": "{...}",
-        "FAUCET_API_URL": "https://sei-mcp.onrender.com",
-        "DISCORD_API_URL": "https://sei-mcp-tdj3.onrender.com"
+        "CHAIN_RPC_URLS": "{\"1\":\"https://mainnet.infura.io/v3/YOUR_KEY\"}",
+        "FAUCET_API_URL": "https://faucet.example.com"
       }
     }
   }
@@ -162,8 +154,8 @@ Wallet material is handled by the MCP wallet storage module and persisted on dis
 Key crates (see `Cargo.toml`):
 - Web: `axum`, `tokio`, `tower`, `tower-http`
 - Serialization: `serde`, `serde_json`, `chrono`, `uuid`
-- Blockchain: `ethers-*`, `cosmrs`, `cosmos-sdk-proto`, `tendermint-rpc`
-- Crypto/keys: `bip39`, `bip32`, `k256`, `aes-gcm`, `argon2`, `bech32`, `sha2`, `ripemd`, `secrecy`, `zeroize`
+- Blockchain: `ethers-*`
+- Crypto/keys: `bip39`, `k256`, `aes-gcm`, `argon2`, `sha2`
 - Utils: `reqwest`, `tracing`, `tracing-subscriber`, `dashmap`, `anyhow`, `thiserror`
 
 ## License

@@ -1,7 +1,7 @@
 //! Wallet manager for handling EVM wallet operations
 
 use anyhow::{anyhow, Result};
-use bip39::{Mnemonic, MnemonicType, Language};
+use bip39::{Mnemonic, Language};
 use ethers::{
     core::k256::ecdsa::SigningKey,
     prelude::*,
@@ -34,7 +34,9 @@ impl WalletManager {
     /// Generate a new EVM wallet with a mnemonic and save it to storage
     pub async fn generate_wallet(&self, name: &str, master_password: &str) -> Result<WalletResponse> {
         // Generate a new mnemonic phrase
-        let mnemonic = Mnemonic::new(MnemonicType::Words12, Language::English);
+        let mut rng = rand::rngs::OsRng;
+        let entropy = rand::Rng::gen::<[u8; 16]>(&mut rng);
+        let mnemonic = Mnemonic::from_entropy_in(Language::English, &entropy)?;
         let mnemonic_phrase = mnemonic.to_string();
 
         // Derive wallet from mnemonic
@@ -87,7 +89,7 @@ impl WalletManager {
         let private_key = private_key.trim_start_matches("0x");
         
         // Parse the private key
-        let wallet = LocalWallet::from_str(private_key)
+        let wallet = private_key.parse::<LocalWallet>()
             .map_err(|e| anyhow!("Invalid private key: {}", e))?;
         
         // Get the address
@@ -147,13 +149,15 @@ impl WalletManager {
     /// Derive a wallet from a mnemonic phrase
     async fn derive_wallet_from_mnemonic(&self, mnemonic_phrase: &str) -> Result<WalletResponse> {
         // Parse the mnemonic
-        let mnemonic = Mnemonic::from_phrase(mnemonic_phrase, Language::English)
+        let mnemonic = Mnemonic::parse_in(Language::English, mnemonic_phrase)
             .map_err(|e| anyhow!("Invalid mnemonic phrase: {}", e))?;
         
         // Derive the wallet using the default Ethereum derivation path
         let path = "m/44'/60'/0'/0/0";
-        let wallet = LocalWallet::from(Mnemonic::from_phrase(mnemonic_phrase, Language::English)?)
-            .derive_path(path)
+        let wallet = ethers_signers::MnemonicBuilder::<ethers_signers::coins_bip39::English>::default()
+            .phrase(mnemonic_phrase)
+            .derivation_path(path)?
+            .build()
             .map_err(|e| anyhow!("Failed to derive wallet: {}", e))?;
         
         // Get the private key and address
@@ -192,7 +196,7 @@ impl WalletManager {
         let storage = self.storage.lock().await;
         let wallets = storage.list_wallets_with_timestamps()?;
         let result = wallets.into_iter()
-            .map(|(name, wallet)| (name, wallet.public_address, wallet.created_at))
+            .map(|(name, address, created_at)| (name, address, created_at))
             .collect();
         Ok(result)
     }

@@ -1,7 +1,7 @@
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use axum::{
     extract::State,
-    routing::{delete, get, post},
+    routing::{get, post},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
@@ -77,6 +77,7 @@ pub struct CreateWalletRequest {
 // --- Handlers ---
 
 /// Create a new EVM wallet
+#[axum::debug_handler]
 pub async fn create_wallet_handler(
     State(state): State<AppState>,
     Json(input): Json<CreateWalletRequest>,

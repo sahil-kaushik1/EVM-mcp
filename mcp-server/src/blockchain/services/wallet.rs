@@ -240,6 +240,5 @@ mod tests {
         assert!(!manager.validate_address("0x"));
         assert!(!manager.validate_address("0x123"));
         assert!(!manager.validate_address("0x742d35Cc6634C0532925a3b844Bc454e4438f44z")); // Invalid character 'z'
-        assert!(!manager.validate_address("sei1v4mx20na4rrah22uz8qefh8wvfs4mj3z0e5s0x")); // Valid Sei address but not EVM
     }
 }

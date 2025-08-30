@@ -1,6 +1,6 @@
 use crate::{
     AppState,
-    blockchain::{client::SeiClient, models::SeiTransferRequest},
+    blockchain::client::EvmClient,
 };
 use anyhow::Result;
 use axum::{
@@ -35,7 +35,7 @@ pub struct TransferResponse {
     pub tx_hash: String,
 }
 
-pub async fn transfer_sei_handler(
+pub async fn transfer_evm_handler(
     Path(chain_id): Path<String>,
     State(state): State<AppState>,
     Json(request): Json<TransferRequest>,
@@ -48,17 +48,44 @@ pub async fn transfer_sei_handler(
         request.gas_limit,
         request.gas_price
     );
-    let client = SeiClient::new(&state.config.chain_rpc_urls, &state.config.websocket_url);
+    let client = EvmClient::new(&state.config.chain_rpc_urls);
 
-    let transfer_request = SeiTransferRequest {
-        to_address: request.to_address,
-        amount: request.amount,
-        private_key: request.private_key,
-        gas_limit: request.gas_limit,
-        gas_price: request.gas_price,
-    };
+    // Create EVM transaction request
+    let mut tx_request = ethers_core::types::TransactionRequest::new()
+        .to(request.to_address.parse::<ethers_core::types::Address>().map_err(|_| {
+            (
+                axum::http::StatusCode::BAD_REQUEST,
+                "Invalid recipient address".to_string(),
+            )
+        })?)
+        .value(ethers_core::types::U256::from_dec_str(&request.amount).map_err(|_| {
+            (
+                axum::http::StatusCode::BAD_REQUEST,
+                "Invalid amount".to_string(),
+            )
+        })?);
 
-    match client.transfer_sei(&chain_id, &transfer_request).await {
+    // Set gas limit if provided
+    if let Some(gas_limit) = &request.gas_limit {
+        tx_request = tx_request.gas(ethers_core::types::U256::from_dec_str(gas_limit).map_err(|_| {
+            (
+                axum::http::StatusCode::BAD_REQUEST,
+                "Invalid gas limit".to_string(),
+            )
+        })?);
+    }
+
+    // Set gas price if provided
+    if let Some(gas_price) = &request.gas_price {
+        tx_request = tx_request.gas_price(ethers_core::types::U256::from_dec_str(gas_price).map_err(|_| {
+            (
+                axum::http::StatusCode::BAD_REQUEST,
+                "Invalid gas price".to_string(),
+            )
+        })?);
+    }
+
+    match client.send_transaction(&chain_id, &request.private_key, tx_request, &state.nonce_manager).await {
         Ok(response) => Ok(Json(TransferResponse {
             chain_id,
             tx_hash: response.tx_hash,

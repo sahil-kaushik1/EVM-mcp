@@ -8,7 +8,7 @@ use tracing::{error, info};
 use crate::{
     AppState,
     blockchain::{
-        client::SeiClient,
+        client::EvmClient,
         models::EstimateFeesRequest,
     },
 };
@@ -46,7 +46,7 @@ pub async fn estimate_fees_handler(
         chain_id
     );
 
-    let client = SeiClient::new(&state.config.chain_rpc_urls, &state.config.websocket_url);
+    let client = EvmClient::new(&state.config.chain_rpc_urls);
 
     // Create the request model from the input payload.
     let estimate_fees_request = EstimateFeesRequest {

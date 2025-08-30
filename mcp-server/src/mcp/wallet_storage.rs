@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use zeroize::Zeroizing;
 
-use crate::blockchain::wallet_manager::WalletResponse;
+use crate::blockchain::models::WalletResponse;
 
 /// Represents a stored EVM wallet with encrypted private key
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -91,8 +91,18 @@ impl WalletStorage {
     
     /// Verify if the provided password matches the master password
     pub fn verify_master_password(&self, master_password: &str) -> bool {
-        !self.master_password_hash.is_empty() && 
+        !self.master_password_hash.is_empty() &&
         self.master_password_hash == Self::hash_password(master_password)
+    }
+
+    /// Check if master password hash is empty
+    pub fn is_master_password_hash_empty(&self) -> bool {
+        self.master_password_hash.is_empty()
+    }
+
+    /// Get wallets map (for internal use)
+    pub fn wallets(&self) -> &HashMap<String, StoredWallet> {
+        &self.wallets
     }
     
     /// Add a new wallet to the storage
@@ -316,7 +326,7 @@ pub fn save_wallet_storage(file_path: &Path, storage: &WalletStorage) -> Result<
             // If rename fails (e.g., cross-device), try copy + remove
             std::fs::copy(&temp_path, file_path)?;
             std::fs::remove_file(&temp_path)?;
-            Ok(())
+            Ok::<(), std::io::Error>(())
         })
         .context("Failed to finalize wallet storage file")?;
     

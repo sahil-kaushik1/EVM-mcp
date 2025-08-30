@@ -80,6 +80,6 @@ pub async fn estimate_fees(
         estimated_gas: estimated_gas_u256.to_string(),
         gas_price: gas_price_u256.to_string(),
         total_fee: total_fee_u256.to_string(),
-        denom: "usei".to_string(),
+        denom: "wei".to_string(),
     })
 }

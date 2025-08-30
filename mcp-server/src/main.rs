@@ -1,4 +1,33 @@
-// src/main.rs
+//! # EVM MCP Server
+//!
+//! This is the main entry point for the EVM MCP (Model Context Protocol) server.
+//! The server provides secure wallet operations, balance queries, and transaction
+//! management for EVM-compatible blockchains.
+//!
+//! ## Features
+//!
+//! - **Multi-chain Support**: Works with any EVM-compatible blockchain (Ethereum, BSC, Polygon, etc.)
+//! - **Secure Wallet Management**: Encrypted wallet storage with master password protection
+//! - **Transaction Operations**: Send transactions, check balances, interact with contracts
+//! - **MCP Protocol**: Compatible with MCP clients for AI assistants
+//! - **HTTP API**: RESTful API for direct integration
+//!
+//! ## Usage
+//!
+//! ### MCP Mode (default for AI assistants)
+//! ```bash
+//! cargo run -- --mcp
+//! ```
+//!
+//! ### HTTP Server Mode
+//! ```bash
+//! cargo run
+//! ```
+//!
+//! ## Configuration
+//!
+//! Configure the server using environment variables or a `.env` file.
+//! See `env.example` for all available options.
 
 use axum::{
     extract::State,
@@ -26,12 +55,13 @@ use evm_mcp_server::{
     mcp::{
         handler::handle_mcp_request,
         protocol::{error_codes, Request, Response},
-        wallet_storage::{get_wallet_storage_path, WalletStorage},
+        wallet_storage::{load_or_create_wallet_storage},
     },
     AppState,
 };
 use std::env;
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::io::{self, AsyncBufReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
@@ -182,13 +212,7 @@ async fn main() {
     };
 
     // Initialize EVM client with RPC URLs
-    let evm_client = match EvmClient::new(&config.chain_rpc_urls) {
-        Ok(client) => client,
-        Err(e) => {
-            error!("❌ Failed to initialize EVM client: {}", e);
-            return;
-        }
-    };
+    let evm_client = EvmClient::new(&config.chain_rpc_urls);
     
     let nonce_manager = NonceManager::new();
 
@@ -214,7 +238,7 @@ async fn main() {
     }
 
     // Create or load wallet storage
-    let wallet_storage = match WalletStorage::load_or_create(wallet_storage_path, &config.master_password) {
+    let wallet_storage = match load_or_create_wallet_storage(&wallet_storage_path, &config.master_password) {
         Ok(storage) => storage,
         Err(e) => {
             error!("Failed to initialize wallet storage: {}", e);
@@ -222,7 +246,7 @@ async fn main() {
         }
     };
     
-    info!("Wallet storage initialized at: {}", wallet_storage.storage_path.display());
+    info!("Wallet storage initialized at: {}", wallet_storage_path.display());
 
     // Create wallet manager
     let wallet_manager = WalletManager::new(wallet_storage.clone());

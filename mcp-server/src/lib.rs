@@ -10,10 +10,6 @@ pub use ethers::types::{Address, H160, H256, U256, U64};
 pub use k256::ecdsa::SigningKey;
 
 // Re-export modules
-pub mod api;
-pub mod blockchain;
-pub mod config;
-pub mod mcp;
 pub mod utils;
 
 /// Application state shared across all request handlers

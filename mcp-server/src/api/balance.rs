@@ -30,7 +30,7 @@ pub async fn get_balance_handler(
     State(state): State<AppState>, // FIX: Use AppState
 ) -> impl IntoResponse {
     // FIX: Use the client from the shared state
-    match state.sei_client.get_balance(&path.chain_id, &path.address).await {
+    match state.evm_client.get_balance(&path.chain_id, &path.address).await {
         Ok(balance_response) => {
             let output = BalanceOutput {
                 chain_id: path.chain_id.clone(),

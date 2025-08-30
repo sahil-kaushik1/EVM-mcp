@@ -18,8 +18,7 @@ pub async fn request_faucet(
 ) -> Result<Json<String>, (StatusCode, String)> {
     // Normalize common aliases users might pass
     let mut chain_id = req.chain_id.trim().to_string();
-    if chain_id == "sei-testnet" { chain_id = "sei-evm-testnet".to_string(); }
-    if chain_id == "sei-mainnet" { chain_id = "sei-evm-mainnet".to_string(); }
+    // No SEI-specific mappings needed
 
     let rpc_url = match state.config.chain_rpc_urls.get(&chain_id) {
         Some(u) => u,

@@ -36,7 +36,7 @@ impl BlockchainClient {
     /// Create a new blockchain client with the given RPC URLs
     pub fn new(rpc_urls: &HashMap<String, String>) -> Result<Self> {
         Ok(Self {
-            evm_client: EvmClient::new(rpc_urls)?,
+            evm_client: EvmClient::new(rpc_urls),
             nonce_manager: Arc::new(tokio::sync::Mutex::new(NonceManager::new())),
         })
     }

@@ -10,7 +10,18 @@ pub struct Config {
     // Server settings
     pub port: u16,
     
-    // Blockchain settings
+    /// Blockchain settings for EVM-compatible networks
+    /// Supported EVM chains include:
+    /// - Ethereum Mainnet (1)
+    /// - Ethereum Goerli Testnet (5)
+    /// - Binance Smart Chain (56)
+    /// - BSC Testnet (97)
+    /// - Polygon (137)
+    /// - Polygon Mumbai Testnet (80001)
+    /// - Arbitrum One (42161)
+    /// - Optimism (10)
+    /// - Base (8453)
+    /// And many more EVM-compatible networks
     pub chain_rpc_urls: HashMap<String, String>,
     pub websocket_url: String,
     pub default_chain_id: u64,
@@ -27,9 +38,22 @@ pub struct Config {
     // External services
     pub faucet_api_url: Option<String>,
     pub discord_api_url: Option<String>,
+    pub discord_webhook_url: Option<String>,
+    pub discord_bot_token: Option<String>,
+    pub discord_channel_id: Option<String>,
 }
 
 impl Config {
+    /// Returns a list of configured chain IDs
+    pub fn supported_chains(&self) -> Vec<String> {
+        self.chain_rpc_urls.keys().cloned().collect()
+    }
+
+    /// Checks if a chain ID is supported
+    pub fn is_chain_supported(&self, chain_id: &str) -> bool {
+        self.chain_rpc_urls.contains_key(chain_id)
+    }
+
     /// Loads configuration from environment variables.
     pub fn from_env() -> Result<Self> {
         // Load variables from the .env file into the environment
@@ -94,6 +118,9 @@ impl Config {
             // External services
             faucet_api_url: env::var("FAUCET_API_URL").ok(),
             discord_api_url: env::var("DISCORD_API_URL").ok(),
+            discord_webhook_url: env::var("DISCORD_WEBHOOK_URL").ok(),
+            discord_bot_token: env::var("DISCORD_BOT_TOKEN").ok(),
+            discord_channel_id: env::var("DISCORD_CHANNEL_ID").ok(),
         })
     }
 }

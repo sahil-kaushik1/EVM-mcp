@@ -1,4 +1,4 @@
-use crate::blockchain::client::SeiClient;
+use crate::blockchain::client::EvmClient;
 use crate::AppState;
 use axum::{
     extract::{Query, State},
@@ -34,7 +34,7 @@ pub async fn search_events(
     State(state): State<AppState>,
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    let client = SeiClient::new(&state.config.chain_rpc_urls, &state.config.websocket_url);
+    let client = EvmClient::new(&state.config.chain_rpc_urls);
 
     let event_query = crate::blockchain::models::EventQuery {
         contract_address: None,
@@ -64,7 +64,7 @@ pub async fn get_contract_events(
     State(state): State<AppState>,
     Query(query): Query<ContractEventsQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    let client = SeiClient::new(&state.config.chain_rpc_urls, &state.config.websocket_url);
+    let client = EvmClient::new(&state.config.chain_rpc_urls);
 
     let event_query = crate::blockchain::models::EventQuery {
         contract_address: Some(query.contract_address.clone()),

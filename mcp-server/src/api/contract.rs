@@ -22,7 +22,7 @@ pub async fn get_contract_handler(
     Path(params): Path<ContractPath>,
 ) -> impl IntoResponse {
     match state
-        .sei_client
+        .evm_client
         .get_contract(&params.chain_id, &params.address)
         .await
     {
@@ -39,7 +39,7 @@ pub async fn get_contract_code_handler(
     Path(params): Path<ContractPath>,
 ) -> impl IntoResponse {
     match state
-        .sei_client
+        .evm_client
         .get_contract_code(&params.chain_id, &params.address)
         .await
     {
@@ -56,7 +56,7 @@ pub async fn get_contract_transactions_handler(
     Path(params): Path<ContractPath>,
 ) -> impl IntoResponse {
     match state
-        .sei_client
+        .evm_client
         .get_contract_transactions(&params.chain_id, &params.address)
         .await
     {
@@ -73,7 +73,7 @@ pub async fn get_is_contract_handler(
     Path(params): Path<ContractPath>,
 ) -> impl IntoResponse {
     match state
-        .sei_client
+        .evm_client
         .is_contract(&params.chain_id, &params.address)
         .await
     {

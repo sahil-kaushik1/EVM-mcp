@@ -159,7 +159,7 @@ pub struct Transaction {
     pub from_address: String,
     pub to_address: String,
     pub amount: String,
-    pub denom: String, // 'usei' for native, token symbol for ERC20
+    pub denom: String, // 'wei' for native, token symbol for ERC20
     pub timestamp: String,
     pub transaction_type: TransactionType,
     #[serde(skip_serializing_if = "Option::is_none")]

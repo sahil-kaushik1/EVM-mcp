@@ -12,6 +12,7 @@ use ethers::{
     types::{Address, TransactionRequest, H256},
     utils::to_checksum,
 };
+use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -60,12 +61,12 @@ impl EvmClient {
 
     /// Create a new wallet
     pub async fn create_wallet(&self) -> Result<WalletResponse> {
-        wallet::create_wallet()
+        wallet::create_wallet().map_err(|e| anyhow!("Failed to create wallet: {}", e))
     }
 
     /// Import a wallet from private key or mnemonic
     pub async fn import_wallet(&self, input: &str) -> Result<WalletResponse> {
-        wallet::import_wallet(input)
+        wallet::import_wallet(input).map_err(|e| anyhow!("Failed to import wallet: {}", e))
     }
 
     /// Get transaction history for an address
@@ -75,7 +76,8 @@ impl EvmClient {
         address: &str,
         limit: u64,
     ) -> Result<TransactionHistoryResponse> {
-        history::get_transaction_history(&self.get_provider(chain_id)?, address, limit).await
+        let client = reqwest::Client::new();
+        history::get_transaction_history(&client, address, limit).await
     }
 
     /// Send a raw transaction
@@ -86,9 +88,20 @@ impl EvmClient {
         tx_request: TransactionRequest,
         nonce_manager: &NonceManager,
     ) -> Result<TransactionResponse> {
+        use ethers_signers::LocalWallet;
+        use std::str::FromStr;
+
+        let wallet = LocalWallet::from_str(private_key)
+            .map_err(|e| anyhow!("Invalid private key: {}", e))?;
+
+        let rpc_url = self.providers.get(chain_id)
+            .ok_or_else(|| anyhow!("No provider available for chain: {}", chain_id))?
+            .url()
+            .to_string();
+
         transactions::send_evm_transaction(
-            &self.get_provider(chain_id)?,
-            private_key,
+            &rpc_url,
+            wallet,
             tx_request,
             nonce_manager,
         )
@@ -97,12 +110,22 @@ impl EvmClient {
 
     /// Get contract information
     pub async fn get_contract(&self, chain_id: &str, address: &str) -> Result<Value> {
-        contract::get_contract(&self.get_provider(chain_id)?, address).await
+        let rpc_url = self.providers.get(chain_id)
+            .ok_or_else(|| anyhow!("No provider available for chain: {}", chain_id))?
+            .url()
+            .to_string();
+        let client = reqwest::Client::new();
+        contract::get_contract(&client, &rpc_url, address).await
     }
 
     /// Get contract bytecode
     pub async fn get_contract_code(&self, chain_id: &str, address: &str) -> Result<Value> {
-        contract::get_contract_code(&self.get_provider(chain_id)?, address).await
+        let rpc_url = self.providers.get(chain_id)
+            .ok_or_else(|| anyhow!("No provider available for chain: {}", chain_id))?
+            .url()
+            .to_string();
+        let client = reqwest::Client::new();
+        contract::get_contract_code(&client, &rpc_url, address).await
     }
 
     /// Get contract transactions
@@ -111,11 +134,46 @@ impl EvmClient {
         chain_id: &str,
         address: &str,
     ) -> Result<Value> {
-        contract::get_contract_transactions(&self.get_provider(chain_id)?, address).await
+        let rpc_url = self.providers.get(chain_id)
+            .ok_or_else(|| anyhow!("No provider available for chain: {}", chain_id))?
+            .url()
+            .to_string();
+        let client = reqwest::Client::new();
+        contract::get_contract_transactions(&client, &rpc_url, address).await
     }
 
     /// Check if an address is a contract
     pub async fn is_contract(&self, chain_id: &str, address: &str) -> Result<bool> {
-        contract::is_contract(&self.get_provider(chain_id)?, address).await
+        let rpc_url = self.providers.get(chain_id)
+            .ok_or_else(|| anyhow!("No provider available for chain: {}", chain_id))?
+            .url()
+            .to_string();
+        let client = reqwest::Client::new();
+        contract::is_evm_contract(&client, &rpc_url, address).await
+    }
+
+    /// Estimate fees for a transaction
+    pub async fn estimate_fees(&self, chain_id: &str, request: &crate::blockchain::models::EstimateFeesRequest) -> Result<crate::blockchain::models::EstimateFeesResponse> {
+        let provider = self.get_provider(chain_id)?;
+
+        // Estimate gas
+        let from_addr = request.from.parse::<ethers_core::types::Address>()?;
+        let to_addr = request.to.parse::<ethers_core::types::Address>()?;
+        let value = ethers_core::types::U256::from_dec_str(&request.amount)?;
+
+        let tx = ethers_core::types::TransactionRequest::new()
+            .from(from_addr)
+            .to(to_addr)
+            .value(value);
+
+        let gas_estimate = provider.estimate_gas(&tx.into(), None).await?;
+        let gas_price = provider.get_gas_price().await?;
+
+        Ok(crate::blockchain::models::EstimateFeesResponse {
+            estimated_gas: gas_estimate.to_string(),
+            gas_price: gas_price.to_string(),
+            total_fee: (gas_estimate * gas_price).to_string(),
+            denom: "wei".to_string(),
+        })
     }
 }

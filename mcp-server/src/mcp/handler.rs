@@ -1,6 +1,43 @@
-// src/mcp/handler.rs
+//! # MCP Handler Module
+//!
+//! This module implements the Model Context Protocol (MCP) for the EVM server.
+//! It handles incoming MCP requests and dispatches them to appropriate tools.
+//!
+//! ## Supported Tools
+//!
+//! ### Wallet Management
+//! - `create_wallet` - Generate a new EVM wallet
+//! - `import_wallet` - Import wallet from private key or mnemonic
+//! - `register_wallet` - Store wallet securely with encryption
+//! - `list_wallets` - List all stored wallets
+//! - `transfer_from_wallet` - Send transactions from stored wallets
+//!
+//! ### Blockchain Operations
+//! - `get_balance` - Query account balances
+//! - `search_events` - Search for EVM log events
+//! - `request_faucet` - Request testnet tokens
+//! - `transfer_evm` - Send EVM value transfers
+//! - `transfer_nft_evm` - Transfer ERC-721 tokens
+//!
+//! ### Contract Interaction
+//! - `get_contract` - Get contract information
+//! - `get_contract_code` - Get contract bytecode
+//! - `get_contract_transactions` - Get contract transaction history
+//! - `is_contract` - Check if address is a contract
+//! - `read_contract` - Read from contract via ABI
+//! - `write_contract` - Write to contract via ABI
+//!
+//! ### Token Operations
+//! - `get_token_info` - Get ERC-20 token metadata
+//! - `get_token_balance` - Check ERC-20 token balance
+//! - `transfer_token` - Transfer ERC-20 tokens
+//! - `get_nft_info` - Get ERC-721 token metadata
+//! - `check_nft_ownership` - Verify NFT ownership
+//! - `transfer_erc1155` - Transfer ERC-1155 tokens
+//!
+//! ### External Integrations
+//! - Discord messaging and health checks
 
-use crate::blockchain::models::ChainType;
 use crate::{
     blockchain::{
         models::WalletResponse,
@@ -33,29 +70,12 @@ pub fn normalize_chain_id(input: &str) -> String {
     }
 
     // Common aliases for EVM networks
-    // Accept: sei-testnet, sei-evm-testnet, sei evm testnet, sei_testnet, etc.
-    if s == "sei-testnet"
-        || s == "sei-evm-testnet"
-        || s == "sei-evm-test"
-        || s == "sei-evm-t"
-        || s == "sei-evm"
-    {
-        return "sei-evm-testnet".to_string();
+    // Accept: testnet, mainnet, etc.
+    if s == "testnet" || s == "test" || s == "t" {
+        return "testnet".to_string();
     }
-    if s == "sei-mainnet" || s == "sei-evm-mainnet" || s == "sei-evm-main" || s == "sei-main" {
-        return "sei-evm-mainnet".to_string();
-    }
-
-    // Native aliases
-    if s == "atlantic-2"
-        || s == "sei-native-testnet"
-        || s == "sei-native"
-        || s == "sei-testnet-native"
-    {
-        return "atlantic-2".to_string();
-    }
-    if s == "pacific-1" || s == "sei-native-mainnet" || s == "sei-mainnet-native" {
-        return "pacific-1".to_string();
+    if s == "mainnet" || s == "main" || s == "m" {
+        return "mainnet".to_string();
     }
 
     s
@@ -87,10 +107,10 @@ fn infer_evm_chain_from_args(args: &Value) -> Option<String> {
     }
     let b = blob.to_lowercase();
     if b.contains("mainnet") {
-        return Some("sei-evm-mainnet".to_string());
+        return Some("mainnet".to_string());
     }
     if b.contains("testnet") {
-        return Some("sei-evm-testnet".to_string());
+        return Some("testnet".to_string());
     }
     None
 }
@@ -131,17 +151,11 @@ pub async fn handle_mcp_request(req: Request, state: AppState) -> Option<Respons
         "get_balance"
         | "request_faucet"
         | "transfer_evm"
-        | "transfer_sei"
         | "transfer_nft_evm"
         | "search_events"
         | "get_contract"
         | "get_contract_code"
-        | "get_contract_transactions"
-        | "redirect_to_seidocs"
-        | "get_chain_info"
-        | "get_transaction_info"
-        | "get_transaction_history"
-        | "get_nft_metadata" => {
+        | "get_contract_transactions" => {
             let name = req.method.clone();
             let wrapped = Request {
                 jsonrpc: req.jsonrpc.clone(),
@@ -195,169 +209,6 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
     // FIX: All tool logic is now wrapped in an async block for clean error handling
     // and receives the shared application state.
     match tool_name {
-        "redirect_to_seidocs" => {
-            // Return a simple payload with the docs URL and a text content for MCP clients
-            let url = crate::blockchain::services::docs::get_sei_docs_url();
-            // Best-effort: on Linux, try opening the default browser via xdg-open
-            #[cfg(target_os = "linux")]
-            {
-                match std::process::Command::new("xdg-open").arg(url).spawn() {
-                    Ok(_) => {
-                        // Include a link content item for clients that support it
-                        let payload = json!({
-                            "url": url,
-                            "opened": true,
-                            "content": [
-                                { "type": "text", "text": "Opened Sei documentation in your browser" },
-                                { "type": "link", "text": "Sei Docs", "url": url }
-                            ]
-                        });
-                        return Response::success(req_id.clone(), payload);
-                    }
-                    Err(_e) => {
-                        // Ignore and continue to return the link-only payload below
-                    }
-                }
-            }
-            let summary = "Open Sei documentation".to_string();
-            // Some MCP clients don't support a dedicated 'link' content item; keep it text-only
-            Response::success(
-                req_id.clone(),
-                json!({
-                    "url": url,
-                    "content": [ { "type": "text", "text": format!("{}: {}", summary, url) } ]
-                })
-            )
-        }
-        ,
-        // --- SeiStream read-only tools ---
-        "get_chain_info" => {
-            let res: Result<Response, Response> = (async {
-                let client = Client::new();
-                let v = crate::blockchain::services::seistream::get_chain_info(&client)
-                    .await
-                    .map_err(|e| Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string()))?;
-                // Provide both human-friendly text content and raw JSON for clients to parse
-                let latest = v.get("latestBlock").and_then(|b| b.get("height")).and_then(|h| h.as_u64());
-                let network = v.get("network").and_then(|n| n.as_str()).unwrap_or("unknown");
-                let summary = if let Some(h) = latest { format!("Chain info — {} (height {})", network, h) } else { format!("Chain info — {}", network) };
-                Ok(Response::success(
-                    req_id.clone(),
-                    json!({
-                        // flatten key fields for clients that render top-level data
-                        "network": v.get("network"),
-                        "latestBlock": v.get("latestBlock"),
-                        "validators": v.get("validators"),
-                        "window": v.get("window"),
-                        // full payload for programmatic consumers
-                        "data": v,
-                        // human summary
-                        "content": [ { "type": "text", "text": summary } ]
-                    }),
-                ))
-            })
-            .await;
-            match res { Ok(r) => r, Err(e) => e }
-        }
-        "get_transaction_info" => {
-            let res: Result<Response, Response> = (async {
-                let hash = utils::get_required_arg::<String>(args, "hash", req_id)?;
-                let client = Client::new();
-                let v = crate::blockchain::services::seistream::get_transaction_info(&client, &hash)
-                    .await
-                    .map_err(|e| Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string()))?;
-                let status = v.get("status").and_then(|s| s.as_str()).unwrap_or("");
-                let from = v.get("from").and_then(|s| s.as_str()).unwrap_or("");
-                let to = v.get("to").and_then(|s| s.as_str()).unwrap_or("");
-                let summary = if !status.is_empty() {
-                    format!("Tx {} — {} ({} -> {})", &hash, status, from, to)
-                } else {
-                    format!("Tx {}", &hash)
-                };
-                Ok(Response::success(
-                    req_id.clone(),
-                    json!({
-                        // expose common tx fields at top-level when present
-                        "hash": v.get("hash").cloned().unwrap_or_else(|| json!(hash)),
-                        "from": v.get("from"),
-                        "to": v.get("to"),
-                        "status": v.get("status"),
-                        "blockNumber": v.get("blockNumber"),
-                        // full payload
-                        "data": v,
-                        // human summary
-                        "content": [ { "type": "text", "text": summary } ]
-                    })
-                ))
-            })
-            .await;
-            match res { Ok(r) => r, Err(e) => e }
-        }
-        "get_transaction_history" => {
-            let res: Result<Response, Response> = (async {
-                let address = utils::get_required_arg::<String>(args, "address", req_id)?;
-                let page = args.get("page").and_then(|v| v.as_u64());
-                let client = Client::new();
-                let v = crate::blockchain::services::seistream::get_transaction_history(&client, &address, page)
-                    .await
-                    .map_err(|e| Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string()))?;
-                let count = v.get("items").and_then(|i| i.as_array()).map(|a| a.len()).unwrap_or(0);
-                let summary = match page {
-                    Some(p) => format!("History for {} — {} item(s) on page {}", &address, count, p),
-                    None => format!("History for {} — {} item(s)", &address, count),
-                };
-                Ok(Response::success(
-                    req_id.clone(),
-                    json!({
-                        "data": v,
-                        "content": [ { "type": "text", "text": summary } ]
-                    })
-                ))
-            })
-            .await;
-            match res { Ok(r) => r, Err(e) => e }
-        }
-        "get_nft_metadata" => {
-            let res: Result<Response, Response> = (async {
-                // ERC-721 items for a contract
-                let contract = utils::get_required_arg::<String>(args, "contract_address", req_id)?;
-                let page = args.get("page").and_then(|v| v.as_u64());
-                let client = Client::new();
-                let v = crate::blockchain::services::seistream::get_nft_metadata_erc721_items(&client, &contract, page)
-                    .await
-                    .map_err(|e| Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string()))?;
-                let count = v.get("items").and_then(|i| i.as_array()).map(|a| a.len()).unwrap_or(0);
-                let summary = match page {
-                    Some(p) => format!("ERC-721 items for {} — {} item(s) on page {}", &contract, count, p),
-                    None => format!("ERC-721 items for {} — {} item(s)", &contract, count),
-                };
-                // Optionally include the first item inline as text preview for Claude UX
-                let preview = v.get("items").and_then(|i| i.as_array()).and_then(|a| a.get(0)).cloned();
-                let mut content = vec![ json!({ "type": "text", "text": summary }) ];
-                if let Some(first) = preview {
-                    if let Ok(pretty) = serde_json::to_string_pretty(&first) {
-                        content.push(json!({ "type": "text", "text": format!("Preview (first item):\n{}", pretty) }));
-                    }
-                }
-                Ok(Response::success(
-                    req_id.clone(),
-                    json!({
-                        // top-level helpful fields for clients
-                        "contract_address": contract,
-                        "page": page,
-                        "count": count,
-                        // first item preview also as structured field
-                        "preview": v.get("items").and_then(|i| i.as_array()).and_then(|a| a.get(0)).cloned(),
-                        // full payload
-                        "data": v,
-                        // human summary and preview text
-                        "content": content
-                    })
-                ))
-            })
-            .await;
-            match res { Ok(r) => r, Err(e) => e }
-        }
         "discord_post_message" => {
             let res: Result<Response, Response> = (async {
                 let base = state.config.discord_api_url.clone().ok_or_else(|| {
@@ -447,11 +298,9 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
                         ));
                     }
                 };
-                let chain_type = ChainType::from_chain_id(&chain_id);
                 let client = Client::new();
-                let is_native = matches!(chain_type, ChainType::Native);
                 let balance = crate::blockchain::services::balance::get_balance(
-                    &client, rpc_url, &address, is_native,
+                    &client, rpc_url, &address, false, // Always EVM
                 )
                 .await
                 .map_err(|e| {
@@ -460,7 +309,7 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
                 let debug_info = json!({
                     "chain_id_normalized": chain_id,
                     "rpc_url": rpc_url,
-                    "chain_type": if is_native { "native" } else { "evm" }
+                    "chain_type": "evm"
                 });
                 let balance_text = match serde_json::to_string(&balance) {
                     Ok(s) => format!("Balance: {}", s),
@@ -487,33 +336,24 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
 
         "create_wallet" => {
             let res: Result<Response, Response> = (async {
-                // Optional chain_type: "evm" (default) or "native"
-                let chain_type = args
-                    .get("chain_type")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("evm");
-                let ct = match chain_type {
-                    "native" => ChainType::Native,
-                    _ => ChainType::Evm,
-                };
-                let wallet = crate::blockchain::services::wallet::create_wallet_for_network(ct)
+                // EVM-only wallet creation
+                let wallet = crate::blockchain::services::wallet::create_wallet()
                     .map_err(|e| Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string()))?;
-                
+
                 // Create a comprehensive response with all wallet details
                 let comprehensive_wallet = json!({
                     "address": wallet.address,
                     "private_key": wallet.private_key,
                     "mnemonic": wallet.mnemonic,
-                    "chain_type": match ct { ChainType::Native => "native", ChainType::Evm => "evm" },
+                    "chain_type": "evm",
                 });
-                
+
                 let mnemonic_text = wallet.mnemonic.as_ref()
                     .map(|m| format!("\nMnemonic: {}", m))
                     .unwrap_or_else(|| "\nMnemonic: Not available".to_string());
-                
+
                 let summary = format!(
-                    "Created {} wallet with complete details:\nAddress: {}\nPrivate Key: {}{}",
-                    match ct { ChainType::Native => "native", ChainType::Evm => "evm" },
+                    "Created EVM wallet with complete details:\nAddress: {}\nPrivate Key: {}{}",
                     wallet.address,
                     wallet.private_key,
                     mnemonic_text
@@ -534,29 +374,23 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
                 } else {
                     utils::get_required_arg::<String>(args, "key", req_id)?
                 };
-                let chain_type = args
-                    .get("chain_type")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("evm");
-                let ct = match chain_type { "native" => ChainType::Native, _ => ChainType::Evm };
-                let wallet = crate::blockchain::services::wallet::import_wallet_for_network(ct, &key)
+                let wallet = crate::blockchain::services::wallet::import_wallet(&key)
                     .map_err(|e| Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string()))?;
-                
+
                 // Create a comprehensive response with all wallet details
                 let comprehensive_wallet = json!({
                     "address": wallet.address,
                     "private_key": wallet.private_key,
                     "mnemonic": wallet.mnemonic,
-                    "chain_type": match ct { ChainType::Native => "native", ChainType::Evm => "evm" },
+                    "chain_type": "evm",
                 });
-                
+
                 let mnemonic_text = wallet.mnemonic.as_ref()
                     .map(|m| format!("\nMnemonic: {}", m))
                     .unwrap_or_else(|| "\nMnemonic: Not available".to_string());
-                
+
                 let summary = format!(
-                    "Imported {} wallet with complete details:\nAddress: {}\nPrivate Key: {}{}",
-                    match ct { ChainType::Native => "native", ChainType::Evm => "evm" },
+                    "Imported EVM wallet with complete details:\nAddress: {}\nPrivate Key: {}{}",
                     wallet.address,
                     wallet.private_key,
                     mnemonic_text
@@ -617,110 +451,102 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
         "search_events" => {
             let res: Result<Response, Response> = (async {
                 let chain_id = utils::get_required_arg::<String>(args, "chain_id", req_id)?;
-                match ChainType::from_chain_id(&chain_id) {
-                    ChainType::Evm => {
-                        let rpc_url =
-                            state.config.chain_rpc_urls.get(&chain_id).ok_or_else(|| {
-                                Response::error(
-                                    req_id.clone(),
-                                    error_codes::INVALID_PARAMS,
-                                    format!("RPC URL not configured for chain_id '{}'", chain_id),
-                                )
-                            })?;
-                        let address = args
-                            .get("contract_address")
-                            .and_then(|v| v.as_str())
-                            .ok_or_else(|| {
-                                Response::error(
-                                    req_id.clone(),
-                                    error_codes::INVALID_PARAMS,
-                                    "Missing 'contract_address'".into(),
-                                )
-                            })?;
-                        let from_block = args.get("from_block").and_then(|v| v.as_str());
-                        let to_block = args.get("to_block").and_then(|v| v.as_str());
-                        let topic0 = args.get("topic0").and_then(|v| v.as_str());
-
-                        // Helper to normalize block tags: accept hex tags (latest/earliest/pending) or decimal block numbers.
-                        fn normalize_block_tag(tag: &str) -> String {
-                            let t = tag.trim();
-                            if t == "latest"
-                                || t == "earliest"
-                                || t == "pending"
-                                || t.starts_with("0x")
-                            {
-                                return t.to_string();
-                            }
-                            // Try parse as decimal number
-                            if let Ok(n) = u64::from_str_radix(t, 10) {
-                                return format!("0x{:x}", n);
-                            }
-                            t.to_string()
-                        }
-
-                        let mut filter = serde_json::json!({ "address": address });
-                        if let Some(fb) = from_block {
-                            filter["fromBlock"] =
-                                serde_json::Value::String(normalize_block_tag(fb));
-                        }
-                        if let Some(tb) = to_block {
-                            filter["toBlock"] = serde_json::Value::String(normalize_block_tag(tb));
-                        }
-                        if let Some(t0) = topic0 {
-                            filter["topics"] = serde_json::json!([t0]);
-                        }
-
-                        let payload = serde_json::json!({
-                            "jsonrpc": "2.0",
-                            "method": "eth_getLogs",
-                            "params": [filter],
-                            "id": 1
-                        });
-                        let client = Client::new();
-                        let resp: serde_json::Value = client
-                            .post(rpc_url)
-                            .json(&payload)
-                            .send()
-                            .await
-                            .map_err(|e| {
-                                Response::error(
-                                    req_id.clone(),
-                                    error_codes::INTERNAL_ERROR,
-                                    format!("RPC error: {}", e),
-                                )
-                            })?
-                            .json()
-                            .await
-                            .map_err(|e| {
-                                Response::error(
-                                    req_id.clone(),
-                                    error_codes::INTERNAL_ERROR,
-                                    format!("Invalid RPC JSON: {}", e),
-                                )
-                            })?;
-                        if let Some(err) = resp.get("error") {
-                            return Err(Response::error(
-                                req_id.clone(),
-                                error_codes::INTERNAL_ERROR,
-                                format!("RPC error: {}", err),
-                            ));
-                        }
-                        // Wrap logs with a summary text
-                        let logs = resp["result"].clone();
-                        let count = logs.as_array().map(|a| a.len()).unwrap_or(0);
-                        let payload = json!({ "logs": logs });
-                        let summary = format!("Found {} log(s)", count);
-                        Ok(Response::success(
+                // EVM-only event search
+                let rpc_url =
+                    state.config.chain_rpc_urls.get(&chain_id).ok_or_else(|| {
+                        Response::error(
                             req_id.clone(),
-                            make_texty_result(summary, payload),
-                        ))
+                            error_codes::INVALID_PARAMS,
+                            format!("RPC URL not configured for chain_id '{}'", chain_id),
+                        )
+                    })?;
+                let address = args
+                    .get("contract_address")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| {
+                        Response::error(
+                            req_id.clone(),
+                            error_codes::INVALID_PARAMS,
+                            "Missing 'contract_address'".into(),
+                        )
+                    })?;
+                let from_block = args.get("from_block").and_then(|v| v.as_str());
+                let to_block = args.get("to_block").and_then(|v| v.as_str());
+                let topic0 = args.get("topic0").and_then(|v| v.as_str());
+
+                // Helper to normalize block tags: accept hex tags (latest/earliest/pending) or decimal block numbers.
+                fn normalize_block_tag(tag: &str) -> String {
+                    let t = tag.trim();
+                    if t == "latest"
+                        || t == "earliest"
+                        || t == "pending"
+                        || t.starts_with("0x")
+                    {
+                        return t.to_string();
                     }
-                    ChainType::Native => Err(Response::error(
+                    // Try parse as decimal number
+                    if let Ok(n) = u64::from_str_radix(t, 10) {
+                        return format!("0x{:x}", n);
+                    }
+                    t.to_string()
+                }
+
+                let mut filter = serde_json::json!({ "address": address });
+                if let Some(fb) = from_block {
+                    filter["fromBlock"] =
+                        serde_json::Value::String(normalize_block_tag(fb));
+                }
+                if let Some(tb) = to_block {
+                    filter["toBlock"] = serde_json::Value::String(normalize_block_tag(tb));
+                }
+                if let Some(t0) = topic0 {
+                    filter["topics"] = serde_json::json!([t0]);
+                }
+
+                let payload = serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "method": "eth_getLogs",
+                    "params": [filter],
+                    "id": 1
+                });
+                let client = Client::new();
+                let resp: serde_json::Value = client
+                    .post(rpc_url)
+                    .json(&payload)
+                    .send()
+                    .await
+                    .map_err(|e| {
+                        Response::error(
+                            req_id.clone(),
+                            error_codes::INTERNAL_ERROR,
+                            format!("RPC error: {}", e),
+                        )
+                    })?
+                    .json()
+                    .await
+                    .map_err(|e| {
+                        Response::error(
+                            req_id.clone(),
+                            error_codes::INTERNAL_ERROR,
+                            format!("Invalid RPC JSON: {}", e),
+                        )
+                    })?;
+                if let Some(err) = resp.get("error") {
+                    return Err(Response::error(
                         req_id.clone(),
                         error_codes::INTERNAL_ERROR,
-                        "Native event search not implemented yet".into(),
-                    )),
+                        format!("RPC error: {}", err),
+                    ));
                 }
+                // Wrap logs with a summary text
+                let logs = resp["result"].clone();
+                let count = logs.as_array().map(|a| a.len()).unwrap_or(0);
+                let payload = json!({ "logs": logs });
+                let summary = format!("Found {} log(s)", count);
+                Ok(Response::success(
+                    req_id.clone(),
+                    make_texty_result(summary, payload),
+                ))
             })
             .await;
             res.unwrap_or_else(|err_resp| err_resp)
@@ -761,7 +587,7 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
                 }
 
                 let response = state
-                    .sei_client
+                    .evm_client
                     .send_transaction(&chain_id, &private_key, tx_request, &state.nonce_manager)
                     .await
                     .map_err(|e| {
@@ -780,50 +606,6 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
             res.unwrap_or_else(|err_resp| err_resp)
         }
 
-        // Native SEI bank transfer using a provided Cosmos private key (0x-hex secp256k1)
-        "transfer_sei" => {
-            let res: Result<Response, Response> = (async {
-                let private_key = utils::get_required_arg::<String>(args, "private_key", req_id)?;
-                let chain_id = utils::get_required_arg::<String>(args, "chain_id", req_id)?;
-                let to_address = utils::get_required_arg::<String>(args, "to_address", req_id)?;
-                let amount_usei = utils::get_required_arg::<String>(args, "amount_usei", req_id)?;
-
-                let amount = amount_usei.parse::<u64>().map_err(|_| {
-                    Response::error(
-                        req_id.clone(),
-                        error_codes::INVALID_PARAMS,
-                        "Invalid 'amount_usei'".into(),
-                    )
-                })?;
-                let rpc_url = state.config.chain_rpc_urls.get(&chain_id).ok_or_else(|| {
-                    Response::error(
-                        req_id.clone(),
-                        error_codes::INVALID_PARAMS,
-                        format!("RPC URL not configured for chain_id '{}'", chain_id),
-                    )
-                })?;
-
-                let tx_hash = transactions::send_native_transaction_signed(
-                    &state.config,
-                    rpc_url,
-                    &private_key,
-                    &to_address,
-                    amount,
-                )
-                .await
-                .map_err(|e| {
-                    Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string())
-                })?;
-                let payload = json!({ "transaction_hash": tx_hash });
-                let summary = format!("SEI bank tx: {}", tx_hash);
-                Ok(Response::success(
-                    req_id.clone(),
-                    make_texty_result(summary, payload),
-                ))
-            })
-            .await;
-            res.unwrap_or_else(|err_resp| err_resp)
-        }
 
         // EVM ERC-721 transfer
         "transfer_nft_evm" => {
@@ -887,7 +669,7 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
                 if let Some(g) = args.get("gas_limit").and_then(|v| v.as_str()) { tx_request = tx_request.gas(U256::from_dec_str(g).unwrap_or_else(|_| U256::from(0))); }
                 if let Some(gp) = args.get("gas_price").and_then(|v| v.as_str()) { tx_request = tx_request.gas_price(U256::from_dec_str(gp).unwrap_or_else(|_| U256::from(0))); }
                 let response = state
-                    .sei_client
+                    .evm_client
                     .send_transaction(&chain_id, &private_key, tx_request, &state.nonce_manager)
                     .await
                     .map_err(|e| {
@@ -906,13 +688,6 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
                 let master_password =
                     utils::get_required_arg::<String>(args, "master_password", req_id)?;
 
-                // Optional chain_type for address derivation
-                let chain_type = args
-                    .get("chain_type")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("evm");
-                let ct = match chain_type { "native" => ChainType::Native, _ => ChainType::Evm };
-
                 // Accept either 'mnemonic_or_private_key' (preferred) or legacy 'private_key'
                 let key = if let Some(s) = args
                     .get("mnemonic_or_private_key")
@@ -922,7 +697,7 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
                 };
 
                 let wallet_info: WalletResponse =
-                    wallet::import_wallet_for_network(ct, &key).map_err(|e| {
+                    wallet::import_wallet(&key).map_err(|e| {
                         Response::error(req_id.clone(), error_codes::INVALID_PARAMS, e.to_string())
                     })?;
 
@@ -930,7 +705,7 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
                 // If in-memory storage is empty (no master password set), replace it with the loaded one.
                 {
                     let mut storage = state.wallet_storage.lock().await;
-                    if storage.master_password_hash.is_empty() {
+                    if storage.is_master_password_hash_empty() {
                         let loaded = wallet_storage::load_or_create_wallet_storage(&state.wallet_storage_path, &master_password)
                             .map_err(|e| {
                                 Response::error(
@@ -994,7 +769,7 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
                 // Lazy-load or initialize storage if needed using the provided master password
                 {
                     let mut storage = state.wallet_storage.lock().await;
-                    if storage.master_password_hash.is_empty() {
+                    if storage.is_master_password_hash_empty() {
                         let loaded = wallet_storage::load_or_create_wallet_storage(&state.wallet_storage_path, &master_password)
                             .map_err(|e| Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, format!("Failed to initialize wallet storage: {}", e)))?;
                         *storage = loaded;
@@ -1010,7 +785,7 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
                 }
                 // Return wallet names with their public addresses
                 let mut wallets: Vec<serde_json::Value> = Vec::new();
-                for w in storage.wallets.values() {
+                for w in storage.wallets().values() {
                     wallets.push(json!({
                         "wallet_name": w.wallet_name,
                         "address": w.public_address,
@@ -1020,7 +795,7 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
                 let count = wallets.len();
                 // Build a human-readable list for MCP clients that only display text content
                 let mut lines: Vec<String> = Vec::new();
-                for w in storage.wallets.values() {
+                for w in storage.wallets().values() {
                     lines.push(format!("• {} — {}", w.wallet_name, w.public_address));
                 }
                 lines.sort();
@@ -1064,7 +839,7 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
                     // Scoped lock
                     let storage = state.wallet_storage.lock().await;
                     storage
-                        .get_decrypted_private_key(&wallet_name, &master_password)
+                        .get_private_key(&wallet_name, &master_password)
                         .map_err(|e| {
                             Response::error(
                                 req_id.clone(),
@@ -1092,7 +867,7 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
                 let tx_request = TransactionRequest::new().to(to).value(value);
 
                 let response = state
-                    .sei_client
+                    .evm_client
                     .send_transaction(&chain_id, &private_key, tx_request, &state.nonce_manager)
                     .await
                     .map_err(|e| {
@@ -1121,9 +896,9 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
                 if chain.is_none() {
                     chain = infer_evm_chain_from_args(args);
                 }
-                let chain_id = chain.unwrap_or_else(|| "sei-evm-testnet".to_string());
+                let chain_id = chain.unwrap_or_else(|| "testnet".to_string());
                 let contract = state
-                    .sei_client
+                    .evm_client
                     .get_contract(&chain_id, &address)
                     .await
                     .map_err(|e| {
@@ -1153,9 +928,9 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
                 if chain.is_none() {
                     chain = infer_evm_chain_from_args(args);
                 }
-                let chain_id = chain.unwrap_or_else(|| "sei-evm-testnet".to_string());
+                let chain_id = chain.unwrap_or_else(|| "1".to_string());
                 let code = state
-                    .sei_client
+                    .evm_client
                     .get_contract_code(&chain_id, &address)
                     .await
                     .map_err(|e| {
@@ -1185,9 +960,9 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
                 if chain.is_none() {
                     chain = infer_evm_chain_from_args(args);
                 }
-                let chain_id = chain.unwrap_or_else(|| "sei-evm-testnet".to_string());
+                let chain_id = chain.unwrap_or_else(|| "1".to_string());
                 let txs = state
-                    .sei_client
+                    .evm_client
                     .get_contract_transactions(&chain_id, &address)
                     .await
                     .map_err(|e| {
@@ -1212,7 +987,7 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
         // Aliases: accept both snake_case and hyphen-case used upstream
         "get_token_info" | "get-token-info" => {
             let res: Result<Response, Response> = (async {
-                let mut chain_id = args.get("chain_id").or_else(|| args.get("network")).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "sei-evm-testnet".to_string());
+                let mut chain_id = args.get("chain_id").or_else(|| args.get("network")).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "1".to_string());
                 chain_id = normalize_chain_id(&chain_id);
                 let token = utils::get_required_arg::<String>(args, "tokenAddress", req_id)
                     .or_else(|_| utils::get_required_arg::<String>(args, "token_address", req_id))?;
@@ -1225,7 +1000,7 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
         }
         "get_token_balance" | "get-token-balance" => {
             let res: Result<Response, Response> = (async {
-                let mut chain_id = args.get("chain_id").or_else(|| args.get("network")).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "sei-evm-testnet".to_string());
+                let mut chain_id = args.get("chain_id").or_else(|| args.get("network")).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "1".to_string());
                 chain_id = normalize_chain_id(&chain_id);
                 let token = utils::get_required_arg::<String>(args, "tokenAddress", req_id).or_else(|_| utils::get_required_arg::<String>(args, "token_address", req_id))?;
                 let owner = utils::get_required_arg::<String>(args, "ownerAddress", req_id).or_else(|_| utils::get_required_arg::<String>(args, "owner_address", req_id))?;
@@ -1238,7 +1013,7 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
         }
         "get_token_allowance" | "get-token-allowance" => {
             let res: Result<Response, Response> = (async {
-                let mut chain_id = args.get("chain_id").or_else(|| args.get("network")).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "sei-evm-testnet".to_string());
+                let mut chain_id = args.get("chain_id").or_else(|| args.get("network")).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "1".to_string());
                 chain_id = normalize_chain_id(&chain_id);
                 let token = utils::get_required_arg::<String>(args, "tokenAddress", req_id).or_else(|_| utils::get_required_arg::<String>(args, "token_address", req_id))?;
                 let owner = utils::get_required_arg::<String>(args, "ownerAddress", req_id).or_else(|_| utils::get_required_arg::<String>(args, "owner_address", req_id))?;
@@ -1253,7 +1028,7 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
         "transfer_token" | "transfer-token" => {
             let res: Result<Response, Response> = (async {
                 let private_key = utils::get_required_arg::<String>(args, "private_key", req_id)?;
-                let mut chain_id = args.get("chain_id").or_else(|| args.get("network")).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "sei-evm-testnet".to_string());
+                let mut chain_id = args.get("chain_id").or_else(|| args.get("network")).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "1".to_string());
                 chain_id = normalize_chain_id(&chain_id);
                 let token = utils::get_required_arg::<String>(args, "tokenAddress", req_id).or_else(|_| utils::get_required_arg::<String>(args, "token_address", req_id))?;
                 let to = utils::get_required_arg::<String>(args, "toAddress", req_id).or_else(|_| utils::get_required_arg::<String>(args, "to_address", req_id))?;
@@ -1262,7 +1037,7 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
                     .map_err(|e| Response::error(req_id.clone(), error_codes::INVALID_PARAMS, e.to_string()))?;
                 if let Some(g) = args.get("gas_limit").and_then(|v| v.as_str()) { tx = tx.gas(U256::from_dec_str(g).unwrap_or_else(|_| U256::from(0))); }
                 if let Some(gp) = args.get("gas_price").and_then(|v| v.as_str()) { tx = tx.gas_price(U256::from_dec_str(gp).unwrap_or_else(|_| U256::from(0))); }
-                let resp = state.sei_client.send_transaction(&chain_id, &private_key, tx, &state.nonce_manager).await
+                let resp = state.evm_client.send_transaction(&chain_id, &private_key, tx, &state.nonce_manager).await
                     .map_err(|e| Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string()))?;
                 Ok(Response::success(req_id.clone(), make_texty_result("ERC20 transfer sent".into(), json!(resp))))
             }).await; match res { Ok(r) => r, Err(e) => e }
@@ -1270,7 +1045,7 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
         "approve_token_spending" | "approve-token-spending" => {
             let res: Result<Response, Response> = (async {
                 let private_key = utils::get_required_arg::<String>(args, "private_key", req_id)?;
-                let mut chain_id = args.get("chain_id").or_else(|| args.get("network")).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "sei-evm-testnet".to_string());
+                let mut chain_id = args.get("chain_id").or_else(|| args.get("network")).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "1".to_string());
                 chain_id = normalize_chain_id(&chain_id);
                 let token = utils::get_required_arg::<String>(args, "tokenAddress", req_id).or_else(|_| utils::get_required_arg::<String>(args, "token_address", req_id))?;
                 let spender = utils::get_required_arg::<String>(args, "spenderAddress", req_id).or_else(|_| utils::get_required_arg::<String>(args, "spender_address", req_id))?;
@@ -1279,14 +1054,14 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
                     .map_err(|e| Response::error(req_id.clone(), error_codes::INVALID_PARAMS, e.to_string()))?;
                 if let Some(g) = args.get("gas_limit").and_then(|v| v.as_str()) { tx = tx.gas(U256::from_dec_str(g).unwrap_or_else(|_| U256::from(0))); }
                 if let Some(gp) = args.get("gas_price").and_then(|v| v.as_str()) { tx = tx.gas_price(U256::from_dec_str(gp).unwrap_or_else(|_| U256::from(0))); }
-                let resp = state.sei_client.send_transaction(&chain_id, &private_key, tx, &state.nonce_manager).await
+                let resp = state.evm_client.send_transaction(&chain_id, &private_key, tx, &state.nonce_manager).await
                     .map_err(|e| Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string()))?;
                 Ok(Response::success(req_id.clone(), make_texty_result("ERC20 approve sent".into(), json!(resp))))
             }).await; match res { Ok(r) => r, Err(e) => e }
         }
         "get_nft_info" | "get-nft-info" => {
             let res: Result<Response, Response> = (async {
-                let mut chain_id = args.get("chain_id").or_else(|| args.get("network")).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "sei-evm-testnet".to_string());
+                let mut chain_id = args.get("chain_id").or_else(|| args.get("network")).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "1".to_string());
                 chain_id = normalize_chain_id(&chain_id);
                 let token = utils::get_required_arg::<String>(args, "tokenAddress", req_id).or_else(|_| utils::get_required_arg::<String>(args, "token_address", req_id))?;
                 let token_id = utils::get_required_arg::<String>(args, "tokenId", req_id).or_else(|_| utils::get_required_arg::<String>(args, "token_id", req_id))?;
@@ -1299,7 +1074,7 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
         }
         "check_nft_ownership" | "check-nft-ownership" => {
             let res: Result<Response, Response> = (async {
-                let mut chain_id = args.get("chain_id").or_else(|| args.get("network")).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "sei-evm-testnet".to_string());
+                let mut chain_id = args.get("chain_id").or_else(|| args.get("network")).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "1".to_string());
                 chain_id = normalize_chain_id(&chain_id);
                 let token = utils::get_required_arg::<String>(args, "tokenAddress", req_id).or_else(|_| utils::get_required_arg::<String>(args, "token_address", req_id))?;
                 let token_id = utils::get_required_arg::<String>(args, "tokenId", req_id).or_else(|_| utils::get_required_arg::<String>(args, "token_id", req_id))?;
@@ -1316,7 +1091,7 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
         }
         "get_nft_balance" | "get-nft-balance" => {
             let res: Result<Response, Response> = (async {
-                let mut chain_id = args.get("chain_id").or_else(|| args.get("network")).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "sei-evm-testnet".to_string());
+                let mut chain_id = args.get("chain_id").or_else(|| args.get("network")).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "1".to_string());
                 chain_id = normalize_chain_id(&chain_id);
                 let token = utils::get_required_arg::<String>(args, "tokenAddress", req_id).or_else(|_| utils::get_required_arg::<String>(args, "token_address", req_id))?;
                 let owner = utils::get_required_arg::<String>(args, "ownerAddress", req_id).or_else(|_| utils::get_required_arg::<String>(args, "owner_address", req_id))?;
@@ -1329,7 +1104,7 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
         }
         "get_erc1155_token_uri" | "get-erc1155-token-uri" => {
             let res: Result<Response, Response> = (async {
-                let mut chain_id = args.get("chain_id").or_else(|| args.get("network")).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "sei-evm-testnet".to_string());
+                let mut chain_id = args.get("chain_id").or_else(|| args.get("network")).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "1".to_string());
                 chain_id = normalize_chain_id(&chain_id);
                 let token = utils::get_required_arg::<String>(args, "tokenAddress", req_id).or_else(|_| utils::get_required_arg::<String>(args, "token_address", req_id))?;
                 let token_id = utils::get_required_arg::<String>(args, "tokenId", req_id).or_else(|_| utils::get_required_arg::<String>(args, "token_id", req_id))?;
@@ -1342,7 +1117,7 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
         }
         "get_erc1155_balance" | "get-erc1155-balance" => {
             let res: Result<Response, Response> = (async {
-                let mut chain_id = args.get("chain_id").or_else(|| args.get("network")).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "sei-evm-testnet".to_string());
+                let mut chain_id = args.get("chain_id").or_else(|| args.get("network")).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "1".to_string());
                 chain_id = normalize_chain_id(&chain_id);
                 let token = utils::get_required_arg::<String>(args, "tokenAddress", req_id).or_else(|_| utils::get_required_arg::<String>(args, "token_address", req_id))?;
                 let owner = utils::get_required_arg::<String>(args, "ownerAddress", req_id).or_else(|_| utils::get_required_arg::<String>(args, "owner_address", req_id))?;
@@ -1357,7 +1132,7 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
         "transfer_erc1155" | "transfer-erc1155" => {
             let res: Result<Response, Response> = (async {
                 let private_key = utils::get_required_arg::<String>(args, "private_key", req_id)?;
-                let mut chain_id = args.get("chain_id").or_else(|| args.get("network")).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "sei-evm-testnet".to_string());
+                let mut chain_id = args.get("chain_id").or_else(|| args.get("network")).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "1".to_string());
                 chain_id = normalize_chain_id(&chain_id);
                 let token = utils::get_required_arg::<String>(args, "tokenAddress", req_id).or_else(|_| utils::get_required_arg::<String>(args, "token_address", req_id))?;
                 let from = utils::get_required_arg::<String>(args, "fromAddress", req_id).or_else(|_| utils::get_required_arg::<String>(args, "from_address", req_id))?;
@@ -1368,7 +1143,7 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
                     .map_err(|e| Response::error(req_id.clone(), error_codes::INVALID_PARAMS, e.to_string()))?;
                 if let Some(g) = args.get("gas_limit").and_then(|v| v.as_str()) { tx = tx.gas(U256::from_dec_str(g).unwrap_or_else(|_| U256::from(0))); }
                 if let Some(gp) = args.get("gas_price").and_then(|v| v.as_str()) { tx = tx.gas_price(U256::from_dec_str(gp).unwrap_or_else(|_| U256::from(0))); }
-                let resp = state.sei_client.send_transaction(&chain_id, &private_key, tx, &state.nonce_manager).await
+                let resp = state.evm_client.send_transaction(&chain_id, &private_key, tx, &state.nonce_manager).await
                     .map_err(|e| Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string()))?;
                 Ok(Response::success(req_id.clone(), make_texty_result("ERC1155 transfer sent".into(), json!(resp))))
             }).await; match res { Ok(r) => r, Err(e) => e }
@@ -1376,13 +1151,13 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
         // --- Generic contract utils ---
         "is_contract" | "is-contract" => {
             let res: Result<Response, Response> = (async {
-                let mut chain_id = args.get("chain_id").or_else(|| args.get("network")).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "sei-evm-testnet".to_string());
+                let mut chain_id = args.get("chain_id").or_else(|| args.get("network")).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "1".to_string());
                 chain_id = normalize_chain_id(&chain_id);
                 let address = utils::get_required_arg::<String>(args, "address", req_id)?;
 
-                // For Sei native (Cosmos) addresses, use SeiClient which calls Seistream Cosmos API.
-                if address.starts_with("sei1") {
-                    let ok = state.sei_client.is_contract(&chain_id, &address).await
+                // For non-EVM addresses, return false
+                if !address.starts_with("0x") {
+                    let ok = state.evm_client.is_contract(&chain_id, &address).await
                         .map_err(|e| Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string()))?;
                     return Ok(Response::success(req_id.clone(), json!({"is_contract": ok, "content": [{"type":"text","text": format!("{} is {}a contract", address, if ok {""} else {"not "})}]})));
                 }
@@ -1397,7 +1172,7 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
         }
         "read_contract" | "read-contract" => {
             let res: Result<Response, Response> = (async {
-                let mut chain_id = args.get("chain_id").or_else(|| args.get("network")).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "sei-evm-testnet".to_string());
+                let mut chain_id = args.get("chain_id").or_else(|| args.get("network")).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "1".to_string());
                 chain_id = normalize_chain_id(&chain_id);
                 let contract = utils::get_required_arg::<String>(args, "contractAddress", req_id).or_else(|_| utils::get_required_arg::<String>(args, "contract_address", req_id))?;
                 let abi = utils::get_required_arg::<String>(args, "abi", req_id)?;
@@ -1413,7 +1188,7 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
         "write_contract" | "write-contract" => {
             let res: Result<Response, Response> = (async {
                 let private_key = utils::get_required_arg::<String>(args, "private_key", req_id)?;
-                let mut chain_id = args.get("chain_id").or_else(|| args.get("network")).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "sei-evm-testnet".to_string());
+                let mut chain_id = args.get("chain_id").or_else(|| args.get("network")).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| "1".to_string());
                 chain_id = normalize_chain_id(&chain_id);
                 let contract = utils::get_required_arg::<String>(args, "contractAddress", req_id).or_else(|_| utils::get_required_arg::<String>(args, "contract_address", req_id))?;
                 let abi = utils::get_required_arg::<String>(args, "abi", req_id)?;
@@ -1423,137 +1198,10 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
                     .map_err(|e| Response::error(req_id.clone(), error_codes::INVALID_PARAMS, e.to_string()))?;
                 if let Some(g) = args.get("gas_limit").and_then(|v| v.as_str()) { tx = tx.gas(U256::from_dec_str(g).unwrap_or_else(|_| U256::from(0))); }
                 if let Some(gp) = args.get("gas_price").and_then(|v| v.as_str()) { tx = tx.gas_price(U256::from_dec_str(gp).unwrap_or_else(|_| U256::from(0))); }
-                let resp = state.sei_client.send_transaction(&chain_id, &private_key, tx, &state.nonce_manager).await
+                let resp = state.evm_client.send_transaction(&chain_id, &private_key, tx, &state.nonce_manager).await
                     .map_err(|e| Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string()))?;
                 Ok(Response::success(req_id.clone(), make_texty_result(format!("write {}.{} sent", contract, function), json!(resp))))
             }).await; match res { Ok(r) => r, Err(e) => e }
-        }
-        "get_chain_info" => {
-            let res: Result<Response, Response> = (async {
-                let client = Client::new();
-                let v = crate::blockchain::services::seistream::get_chain_info(&client)
-                    .await
-                    .map_err(|e| Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string()))?;
-                // Provide both human-friendly text content and raw JSON for clients to parse
-                let latest = v.get("latestBlock").and_then(|b| b.get("height")).and_then(|h| h.as_u64());
-                let network = v.get("network").and_then(|n| n.as_str()).unwrap_or("unknown");
-                let summary = if let Some(h) = latest { format!("Chain info — {} (height {})", network, h) } else { format!("Chain info — {}", network) };
-                Ok(Response::success(
-                    req_id.clone(),
-                    json!({
-                        // flatten key fields for clients that render top-level data
-                        "network": v.get("network"),
-                        "latestBlock": v.get("latestBlock"),
-                        "validators": v.get("validators"),
-                        "window": v.get("window"),
-                        // full payload for programmatic consumers
-                        "data": v,
-                        // human summary
-                        "content": [ { "type": "text", "text": summary } ]
-                    }),
-                ))
-            })
-            .await;
-            match res { Ok(r) => r, Err(e) => e }
-        }
-        "get_transaction_info" => {
-            let res: Result<Response, Response> = (async {
-                let hash = utils::get_required_arg::<String>(args, "hash", req_id)?;
-                let client = Client::new();
-                let v = crate::blockchain::services::seistream::get_transaction_info(&client, &hash)
-                    .await
-                    .map_err(|e| Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string()))?;
-                let status = v.get("status").and_then(|s| s.as_str()).unwrap_or("");
-                let from = v.get("from").and_then(|s| s.as_str()).unwrap_or("");
-                let to = v.get("to").and_then(|s| s.as_str()).unwrap_or("");
-                let summary = if !status.is_empty() {
-                    format!("Tx {} — {} ({} -> {})", &hash, status, from, to)
-                } else {
-                    format!("Tx {}", &hash)
-                };
-                Ok(Response::success(
-                    req_id.clone(),
-                    json!({
-                        // expose common tx fields at top-level when present
-                        "hash": v.get("hash").cloned().unwrap_or_else(|| json!(hash)),
-                        "from": v.get("from"),
-                        "to": v.get("to"),
-                        "status": v.get("status"),
-                        "blockNumber": v.get("blockNumber"),
-                        // full payload
-                        "data": v,
-                        // human summary
-                        "content": [ { "type": "text", "text": summary } ]
-                    })
-                ))
-            })
-            .await;
-            match res { Ok(r) => r, Err(e) => e }
-        }
-        "get_transaction_history" => {
-            let res: Result<Response, Response> = (async {
-                let address = utils::get_required_arg::<String>(args, "address", req_id)?;
-                let page = args.get("page").and_then(|v| v.as_u64());
-                let client = Client::new();
-                let v = crate::blockchain::services::seistream::get_transaction_history(&client, &address, page)
-                    .await
-                    .map_err(|e| Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string()))?;
-                let count = v.get("items").and_then(|i| i.as_array()).map(|a| a.len()).unwrap_or(0);
-                let summary = match page {
-                    Some(p) => format!("History for {} — {} item(s) on page {}", &address, count, p),
-                    None => format!("History for {} — {} item(s)", &address, count),
-                };
-                Ok(Response::success(
-                    req_id.clone(),
-                    json!({
-                        "data": v,
-                        "content": [ { "type": "text", "text": summary } ]
-                    })
-                ))
-            })
-            .await;
-            match res { Ok(r) => r, Err(e) => e }
-        }
-        "get_nft_metadata" => {
-            let res: Result<Response, Response> = (async {
-                // ERC-721 items for a contract
-                let contract = utils::get_required_arg::<String>(args, "contract_address", req_id)?;
-                let page = args.get("page").and_then(|v| v.as_u64());
-                let client = Client::new();
-                let v = crate::blockchain::services::seistream::get_nft_metadata_erc721_items(&client, &contract, page)
-                    .await
-                    .map_err(|e| Response::error(req_id.clone(), error_codes::INTERNAL_ERROR, e.to_string()))?;
-                let count = v.get("items").and_then(|i| i.as_array()).map(|a| a.len()).unwrap_or(0);
-                let summary = match page {
-                    Some(p) => format!("ERC-721 items for {} — {} item(s) on page {}", &contract, count, p),
-                    None => format!("ERC-721 items for {} — {} item(s)", &contract, count),
-                };
-                // Optionally include the first item inline as text preview for Claude UX
-                let preview = v.get("items").and_then(|i| i.as_array()).and_then(|a| a.get(0)).cloned();
-                let mut content = vec![ json!({ "type": "text", "text": summary }) ];
-                if let Some(first) = preview {
-                    if let Ok(pretty) = serde_json::to_string_pretty(&first) {
-                        content.push(json!({ "type": "text", "text": format!("Preview (first item):\n{}", pretty) }));
-                    }
-                }
-                Ok(Response::success(
-                    req_id.clone(),
-                    json!({
-                        // top-level helpful fields for clients
-                        "contract_address": contract,
-                        "page": page,
-                        "count": count,
-                        // first item preview also as structured field
-                        "preview": v.get("items").and_then(|i| i.as_array()).and_then(|a| a.get(0)).cloned(),
-                        // full payload
-                        "data": v,
-                        // human summary and preview text
-                        "content": content
-                    })
-                ))
-            })
-            .await;
-            match res { Ok(r) => r, Err(e) => e }
         }
         _ => Response::error(
             req.id,
@@ -1566,12 +1214,12 @@ async fn handle_tool_call(req: Request, state: AppState) -> Response {
 /// Handles the 'initialize' request.
 fn handle_initialize(req: &Request) -> Response {
     let server_info = json!({
-        "name": "seiyn_mcp",
+        "name": "evm_mcp",
         "version": "0.1.0"
     });
     let capabilities = json!({ "tools": { "listChanged": false } });
     let instructions =
-        "Sei EVM blockchain MCP server for secure wallet operations, balance queries, and transaction management.";
+        "EVM blockchain MCP server for secure wallet operations, balance queries, and transaction management.";
 
     Response::success(
         req.id.clone(),
@@ -1589,17 +1237,12 @@ fn handle_initialize(req: &Request) -> Response {
 fn handle_tools_list(req: &Request) -> Response {
     let tools = json!([
         {
-            "name": "redirect_to_seidocs",
-            "description": "Return the Sei documentation URL (https://docs.sei.io/).",
-            "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
-        },
-        {
             "name": "get_balance",
-            "description": "Get the EVM balance of an address on a specific Sei chain.",
+            "description": "Get the EVM balance of an address on a specific chain.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "chain_id": {"type": "string", "description": "The blockchain chain ID (e.g., 'sei-testnet')"},
+                    "chain_id": {"type": "string", "description": "The blockchain chain ID (e.g., '1' for Ethereum mainnet)"},
                     "address": {"type": "string", "description": "The 0x... EVM wallet address to check."}
                 },
                 "required": ["chain_id", "address"]
@@ -1693,9 +1336,9 @@ fn handle_tools_list(req: &Request) -> Response {
                 "type": "object",
                 "properties": {
                     "wallet_name": {"type": "string", "description": "The name of the stored wallet to transfer from."},
-                    "chain_id": {"type": "string", "description": "The blockchain chain ID (e.g., 'sei-testnet')."},
+                    "chain_id": {"type": "string", "description": "The blockchain chain ID (e.g., 'testnet')."},
                     "to_address": {"type": "string", "description": "The recipient's 0x... EVM address."},
-                    "amount": {"type": "string", "description": "The amount to transfer in the smallest unit (e.g., usei)."},
+                    "amount": {"type": "string", "description": "The amount to transfer in wei."},
                     "master_password": {"type": "string", "description": "The master password to unlock the wallet for this transaction."}
                 },
                 "required": ["wallet_name", "chain_id", "to_address", "amount", "master_password"]
@@ -1715,21 +1358,6 @@ fn handle_tools_list(req: &Request) -> Response {
                     "gas_price": {"type": "string"}
                 },
                 "required": ["private_key", "chain_id", "to_address", "amount_wei"],
-                "additionalProperties": false
-            }
-        },
-        {
-            "name": "transfer_sei",
-            "description": "Send a native SEI (Cosmos) bank transfer using a provided private key.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "private_key": {"type": "string", "description": "0x-hex Cosmos secp256k1 private key"},
-                    "chain_id": {"type": "string"},
-                    "to_address": {"type": "string", "description": "Bech32 address (sei...)"},
-                    "amount_usei": {"type": "string"}
-                },
-                "required": ["private_key", "chain_id", "to_address", "amount_usei"],
                 "additionalProperties": false
             }
         },
@@ -1756,7 +1384,7 @@ fn handle_tools_list(req: &Request) -> Response {
                 "type": "object",
                 "properties": {
                     "address": {"type": "string", "description": "The address of the smart contract."},
-                    "chain_id": {"type": "string", "description": "Optional chain id (e.g., 'sei-evm-mainnet' or 'sei-evm-testnet')."}
+                    "chain_id": {"type": "string", "description": "Optional chain id (e.g., 'mainnet' or 'testnet')."}
                 },
                 "required": ["address"]
             }
@@ -1879,47 +1507,6 @@ fn handle_tools_list(req: &Request) -> Response {
             "name": "write_contract",
             "description": "Write to a contract via ABI (signed tx).",
             "inputSchema": {"type": "object", "properties": {"private_key": {"type": "string"}, "contractAddress": {"type": "string"}, "abi": {"type": "string"}, "functionName": {"type": "string"}, "args": {"type": "array"}, "chain_id": {"type": "string"}, "network": {"type": "string"}, "gas_limit": {"type": "string"}, "gas_price": {"type": "string"}}, "required": ["private_key", "contractAddress", "abi", "functionName"]}
-        },
-        {
-            "name": "get_chain_info",
-            "description": "Get general chain info from SeiStream (network, latest block, validators, etc).",
-            "inputSchema": {"type": "object", "properties": {}, "additionalProperties": false}
-        },
-        {
-            "name": "get_transaction_info",
-            "description": "Get transaction info by EVM hash from SeiStream.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {"hash": {"type": "string"}},
-                "required": ["hash"],
-                "additionalProperties": false
-            }
-        },
-        {
-            "name": "get_transaction_history",
-            "description": "Get transaction history for an EVM address from SeiStream.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "address": {"type": "string"},
-                    "page": {"type": "number", "description": "Optional page number"}
-                },
-                "required": ["address"],
-                "additionalProperties": false
-            }
-        },
-        {
-            "name": "get_nft_metadata",
-            "description": "Get ERC-721 NFT metadata items for a contract from SeiStream.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "contract_address": {"type": "string"},
-                    "page": {"type": "number", "description": "Optional page number"}
-                },
-                "required": ["contract_address"],
-                "additionalProperties": false
-            }
         },
     ]);
     Response::success(req.id.clone(), json!({ "tools": tools }))

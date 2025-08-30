@@ -1,6 +1,5 @@
 // src/blockchain/services/faucet.rs
 
-use crate::blockchain::models::ChainType;
 use crate::config::Config;
 use anyhow::{Context, Result};
 use serde::Deserialize;
@@ -15,18 +14,17 @@ pub async fn send_faucet_tokens(
     _rpc_url: &str,
     chain_id: &str,
 ) -> Result<String> {
-    let chain_type = ChainType::from_chain_id(chain_id);
-
-    // Map ChainType to faucet API chain labels
-    let faucet_chain = match chain_type {
-        ChainType::Evm => "sei-evm-testnet",
-        ChainType::Native => "sei-native-testnet",
+    // For EVM-only, always use EVM faucet chain
+    let faucet_chain = if chain_id.contains("testnet") {
+        "testnet"
+    } else {
+        "mainnet"
     };
 
     info!("Requesting faucet via API for {} on {}", recipient_address, faucet_chain);
 
     let client = reqwest::Client::new();
-    let url = format!("{}/faucet/request", config.faucet_api_url.trim_end_matches('/'));
+    let url = format!("{}/faucet/request", config.faucet_api_url.as_ref().unwrap_or(&"".to_string()).trim_end_matches('/'));
 
     #[derive(Deserialize)]
     struct FaucetResponse {

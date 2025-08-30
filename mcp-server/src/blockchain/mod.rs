@@ -1,7 +1,21 @@
-// src/blockchain/mod.rs
+//! # Blockchain Module
+//!
+//! This module provides the core blockchain functionality for EVM-compatible networks.
+//! It includes clients for interacting with blockchain nodes, wallet management,
+//! transaction handling, and various blockchain services.
+//!
+//! ## Architecture
+//!
+//! - `client`: Main blockchain client interface
+//! - `evm_client`: EVM-specific client implementation
+//! - `models`: Data models for blockchain entities
+//! - `nonce_manager`: Manages transaction nonces
+//! - `services`: Various blockchain services (balance, transactions, etc.)
+//! - `wallet_manager`: Wallet creation and management
 
 // Re-export the client module with EVM client
 pub mod client;
+pub mod evm_client;
 pub use client::EvmClient;
 
 // Re-export other modules

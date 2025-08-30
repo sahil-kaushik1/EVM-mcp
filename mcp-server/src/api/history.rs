@@ -8,7 +8,7 @@ use tracing::{error, info};
 use crate::{
     AppState,
     blockchain::{
-        client::SeiClient,
+        client::EvmClient,
         models::Transaction,
     },
 };
@@ -49,7 +49,7 @@ pub async fn get_transaction_history_handler(
         path.chain_id, path.address
     );
 
-    let client = SeiClient::new(&state.config.chain_rpc_urls, &state.config.websocket_url);
+    let client = EvmClient::new(&state.config.chain_rpc_urls);
 
     // Use the provided range or a default value (e.g., 2000 blocks).
     let limit = query.limit.unwrap_or(20); // Default to 20 transactions
