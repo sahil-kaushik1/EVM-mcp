@@ -76,7 +76,7 @@ Deploy, then test:
 - `GET https://<your-project>.vercel.app/api/mcp/health`
 - Use the app UI at the root URL.
 
-Deployed at: [https://evm-mcp.vercel.app](https://evmsorcerer.vercel.app/)
+Deployed at: https://evmsorcerer.vercel.app/
 
 ## CI/CD
 
