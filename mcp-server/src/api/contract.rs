@@ -77,9 +77,39 @@ pub async fn get_is_contract_handler(
         .is_contract(&params.chain_id, &params.address)
         .await
     {
-        Ok(is_contract) => (StatusCode::OK, Json(json!({ "is_contract": is_contract }))).into_response(),
+        Ok(is_contract) => {
+            (StatusCode::OK, Json(json!({ "is_contract": is_contract }))).into_response()
+        }
         Err(e) => {
             error!("Failed to check is_contract: {:?}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+        }
+    }
+}
+
+pub async fn get_contract_source_code_handler(
+    State(state): State<AppState>,
+    Path(params): Path<ContractPath>,
+) -> impl IntoResponse {
+    let etherscan_api_key = match &state.config.etherscan_api_key {
+        Some(key) => key,
+        None => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Etherscan API key not configured".to_string(),
+            )
+                .into_response();
+        }
+    };
+
+    match state
+        .evm_client
+        .get_contract_source_code(&params.chain_id, &params.address, etherscan_api_key)
+        .await
+    {
+        Ok(source_code) => (StatusCode::OK, Json(source_code)).into_response(),
+        Err(e) => {
+            error!("Failed to get contract source code: {:?}", e);
             (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
         }
     }

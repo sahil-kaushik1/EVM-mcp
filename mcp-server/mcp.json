@@ -11,7 +11,7 @@
         "DEFAULT_GAS_LIMIT": "21000",
         "DEFAULT_GAS_PRICE": "5000000000",
         "WALLET_STORAGE_PATH": "./wallets.json",
-        "ETHERSCAN_API_KEY": "ETHERSCAN_API_KEY",
+        "ETHERSCAN_API_KEY": "JGUKX8GXM3HVY74GK94WQR68RVBNE9GZ5A",
         "PORT": "8080"
       },
       "disabled": false

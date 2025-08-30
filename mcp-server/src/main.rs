@@ -38,8 +38,8 @@ use evm_mcp_server::{
     api::{
         balance::get_balance_handler,
         contract::{
-            get_contract_code_handler, get_contract_handler, get_contract_transactions_handler,
-            get_is_contract_handler,
+            get_contract_code_handler, get_contract_handler, get_contract_source_code_handler,
+            get_contract_transactions_handler, get_is_contract_handler,
         },
         health::health_handler,
         history::get_transaction_history_handler,
@@ -85,6 +85,10 @@ async fn run_http_server(state: AppState) {
         .route(
             "/contract/:chain_id/:address/code",
             get(get_contract_code_handler),
+        )
+        .route(
+            "/contract/:chain_id/:address/source",
+            get(get_contract_source_code_handler),
         )
         .route(
             "/contract/:chain_id/:address/transactions",

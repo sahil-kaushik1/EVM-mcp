@@ -1,9 +1,22 @@
 // src/config.rs
 
 use anyhow::{Context, Result};
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::env;
+use std::fs;
+use std::path::PathBuf;
 use tracing::{info, warn};
+
+#[derive(Deserialize)]
+struct McpConfig {
+    mcpServers: HashMap<String, McpServerConfig>,
+}
+
+#[derive(Deserialize)]
+struct McpServerConfig {
+    env: HashMap<String, String>,
+}
 
 // A struct to hold all configuration, loaded once at startup from the .env file.
 #[derive(Clone, Debug, Default)]
@@ -39,6 +52,67 @@ pub struct Config {
     pub etherscan_api_key: Option<String>,
 }
 
+/// Load Etherscan API key from mcp_config.json file
+fn load_etherscan_api_key() -> Option<String> {
+    // Try to find mcp_config.json or mcp.json in common locations
+    let possible_paths = vec![
+        // Check in the current directory first
+        PathBuf::from("mcp_config.json"),
+        PathBuf::from("mcp.json"),
+        // Check in the parent directory
+        PathBuf::from("..").join("mcp_config.json"),
+        PathBuf::from("..").join("mcp.json"),
+        // Check in the grandparent directory
+        PathBuf::from("..").join("..").join("mcp_config.json"),
+        PathBuf::from("..").join("..").join("mcp.json"),
+        // Check in the .codeium/windsurf directory
+        PathBuf::from("..")
+            .join("..")
+            .join("..")
+            .join(".codeium")
+            .join("windsurf")
+            .join("mcp_config.json"),
+        PathBuf::from("..")
+            .join("..")
+            .join("..")
+            .join(".codeium")
+            .join("windsurf")
+            .join("mcp.json"),
+    ];
+
+    for path in possible_paths {
+        if path.exists() {
+            match fs::read_to_string(&path) {
+                Ok(content) => {
+                    match serde_json::from_str::<McpConfig>(&content) {
+                        Ok(config) => {
+                            // Look for the evm-mcp-release server configuration
+                            if let Some(server_config) = config.mcpServers.get("evm-mcp-release") {
+                                if let Some(api_key) = server_config.env.get("ETHERSCAN_API_KEY") {
+                                    // Skip if it's just a placeholder
+                                    if api_key != "ETHERSCAN_API_KEY" && !api_key.is_empty() {
+                                        info!("Loaded Etherscan API key from {}", path.display());
+                                        return Some(api_key.clone());
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            warn!("Failed to parse {}: {}", path.display(), e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    warn!("Failed to read {}: {}", path.display(), e);
+                }
+            }
+        }
+    }
+
+    // Fallback to environment variable
+    env::var("ETHERSCAN_API_KEY").ok()
+}
+
 impl Config {
     /// Returns a list of configured chain IDs
     pub fn supported_chains(&self) -> Vec<String> {
@@ -59,7 +133,7 @@ impl Config {
 
         // Load chain RPC URLs with fallbacks
         let mut chain_rpc_urls = HashMap::new();
-        
+
         // Try to load from environment variable first
         if let Ok(rpc_urls_str) = env::var("CHAIN_RPC_URLS") {
             if let Ok(urls) = serde_json::from_str::<HashMap<String, String>>(&rpc_urls_str) {
@@ -72,14 +146,15 @@ impl Config {
 
         // Add default RPC URLs if not already set
         let default_urls = vec![
-            ("1", "https://eth.llamarpc.com"), // Ethereum Mainnet
-            ("11155111", "https://rpc.sepolia.org"), // Sepolia Testnet
+            ("1", "https://eth.llamarpc.com"),        // Ethereum Mainnet
+            ("11155111", "https://rpc.sepolia.org"),  // Sepolia Testnet
             ("324", "https://mainnet.era.zksync.io"), // zkSync Mainnet
             ("300", "https://sepolia.era.zksync.io"), // zkSync Sepolia Testnet
         ];
 
         for (chain_id, url) in default_urls {
-            chain_rpc_urls.entry(chain_id.to_string())
+            chain_rpc_urls
+                .entry(chain_id.to_string())
                 .or_insert_with(|| {
                     info!("Using default RPC URL for chain {}: {}", chain_id, url);
                     url.to_string()
@@ -154,7 +229,7 @@ impl Config {
                 info!("Discord channel ID configured");
                 id
             }),
-            etherscan_api_key: env::var("ETHERSCAN_API_KEY").ok().map(|key| {
+            etherscan_api_key: load_etherscan_api_key().map(|key| {
                 info!("Etherscan API key configured");
                 key
             }),

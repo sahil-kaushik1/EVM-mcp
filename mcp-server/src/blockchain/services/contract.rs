@@ -1,8 +1,46 @@
 // src/blockchain/services/contract.rs
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use reqwest::Client;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+#[derive(Deserialize, Debug)]
+struct EtherscanContractResponse {
+    status: String,
+    message: String,
+    result: Vec<EtherscanContractResult>,
+}
+
+#[derive(Deserialize, Debug, Serialize)]
+struct EtherscanContractResult {
+    #[serde(rename = "SourceCode")]
+    source_code: String,
+    #[serde(rename = "ABI")]
+    abi: String,
+    #[serde(rename = "ContractName")]
+    contract_name: String,
+    #[serde(rename = "CompilerVersion")]
+    compiler_version: String,
+    #[serde(rename = "OptimizationUsed")]
+    optimization_used: String,
+    #[serde(rename = "Runs")]
+    runs: String,
+    #[serde(rename = "ConstructorArguments")]
+    constructor_arguments: String,
+    #[serde(rename = "EVMVersion")]
+    evm_version: String,
+    #[serde(rename = "Library")]
+    library: String,
+    #[serde(rename = "LicenseType")]
+    license_type: String,
+    #[serde(rename = "Proxy")]
+    proxy: String,
+    #[serde(rename = "Implementation")]
+    implementation: String,
+    #[serde(rename = "SwarmSource")]
+    swarm_source: String,
+}
 
 // Generic EVM contract functions using standard RPC calls
 
@@ -46,7 +84,7 @@ pub async fn get_contract(client: &Client, rpc_url: &str, address: &str) -> Resu
         Err(_) => Ok(serde_json::json!({
             "status": status.as_u16(),
             "raw": body
-        }))
+        })),
     }
 }
 
@@ -75,7 +113,7 @@ pub async fn get_contract_code(client: &Client, rpc_url: &str, address: &str) ->
                 Ok(serde_json::json!({ "status": status.as_u16(), "raw": body }))
             }
         }
-        Err(_) => Ok(serde_json::json!({ "status": status.as_u16(), "raw": body }))
+        Err(_) => Ok(serde_json::json!({ "status": status.as_u16(), "raw": body })),
     }
 }
 
@@ -92,7 +130,6 @@ pub async fn get_contract_transactions(
         "note": "Consider using a blockchain explorer API for transaction history"
     }))
 }
-
 
 /// Check if an EVM address is a smart contract via eth_getCode.
 pub async fn is_evm_contract(client: &Client, rpc_url: &str, address: &str) -> Result<bool> {
@@ -115,7 +152,7 @@ pub async fn is_evm_contract(client: &Client, rpc_url: &str, address: &str) -> R
                 Ok(false)
             }
         }
-        Err(_) => Ok(false)
+        Err(_) => Ok(false),
     }
 }
 
@@ -133,7 +170,11 @@ fn normalize_contract_code(v: Value) -> Value {
     use serde_json::json;
 
     // abi: coerce any array elements into strings; if object, stringify; else empty
-    let abi_arr = v.get("abi").and_then(|x| x.as_array()).cloned().unwrap_or_default();
+    let abi_arr = v
+        .get("abi")
+        .and_then(|x| x.as_array())
+        .cloned()
+        .unwrap_or_default();
     let abi: Vec<String> = abi_arr
         .into_iter()
         .map(|el| match el {
@@ -177,7 +218,11 @@ fn normalize_contract_code(v: Value) -> Value {
                 .iter()
                 .map(|item| {
                     if let Value::Object(obj) = item {
-                        let name = obj.get("name").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                        let name = obj
+                            .get("name")
+                            .and_then(|x| x.as_str())
+                            .unwrap_or("")
+                            .to_string();
                         let sc = obj
                             .get("sourceCode")
                             .or_else(|| obj.get("content"))
@@ -225,3 +270,85 @@ fn normalize_contract_code(v: Value) -> Value {
     })
 }
 
+/// Get contract source code from Etherscan API
+pub async fn get_contract_source_code(
+    client: &Client,
+    chain_id: &str,
+    address: &str,
+    etherscan_api_key: &str,
+) -> Result<Value> {
+    // Map chain IDs to Etherscan base URLs
+    let base_url = match chain_id {
+        "1" => "https://api.etherscan.io/v2/api",
+        "11155111" => "https://api-sepolia.etherscan.io/v2/api",
+        "324" | "300" => {
+            // zkSync chains don't have Etherscan support, return error
+            return Err(anyhow!("Etherscan API not supported for zkSync chains"));
+        }
+        _ => return Err(anyhow!("Unsupported chain ID for Etherscan: {}", chain_id)),
+    };
+
+    // Build the Etherscan API URL for getting source code
+    let url = format!(
+        "{}?chainid={}&module=contract&action=getsourcecode&address={}&apikey={}",
+        base_url, chain_id, address, etherscan_api_key
+    );
+
+    let res: EtherscanContractResponse = client
+        .get(&url)
+        .send()
+        .await?
+        .json()
+        .await
+        .map_err(|e| anyhow!("Failed to parse Etherscan response: {}", e))?;
+
+    if res.status != "1" {
+        return Err(anyhow!(
+            "Etherscan API error: {} - {}",
+            res.message,
+            if res.result.is_empty() {
+                "No result".to_string()
+            } else {
+                res.result[0].source_code.clone()
+            }
+        ));
+    }
+
+    if res.result.is_empty() {
+        return Err(anyhow!(
+            "No contract source code found for address: {}",
+            address
+        ));
+    }
+
+    let contract = &res.result[0];
+
+    // Parse ABI if it's valid JSON
+    let abi_value: Value = if contract.abi.is_empty() {
+        Value::Array(vec![])
+    } else {
+        serde_json::from_str(&contract.abi)
+            .unwrap_or_else(|_| Value::String("Invalid ABI format".to_string()))
+    };
+
+    // Return structured response
+    Ok(serde_json::json!({
+        "address": address,
+        "chainId": chain_id,
+        "contractName": contract.contract_name,
+        "sourceCode": contract.source_code,
+        "abi": abi_value,
+        "compiler": {
+            "version": contract.compiler_version,
+            "optimization": contract.optimization_used,
+            "runs": contract.runs,
+            "evmVersion": contract.evm_version
+        },
+        "constructorArguments": contract.constructor_arguments,
+        "library": contract.library,
+        "licenseType": contract.license_type,
+        "proxy": contract.proxy,
+        "implementation": contract.implementation,
+        "swarmSource": contract.swarm_source
+    }))
+}

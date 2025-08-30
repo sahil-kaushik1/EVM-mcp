@@ -51,7 +51,7 @@ impl EvmClient {
     }
 
     /// Get the balance of an address in wei
-    /// 
+    ///
     /// # Note
     /// This method is now deprecated - balance fetching is handled via Etherscan API
     /// in the services layer. This method is kept for backward compatibility.
@@ -74,7 +74,7 @@ impl EvmClient {
     /// Get transaction history for an address
     pub async fn get_transaction_history(
         &self,
-        _chain_id: &str,  // Currently unused, kept for future implementation
+        _chain_id: &str, // Currently unused, kept for future implementation
         address: &str,
         limit: u64,
     ) -> Result<TransactionHistoryResponse> {
@@ -154,4 +154,14 @@ impl EvmClient {
         contract::is_evm_contract(&client, &rpc_url, address).await
     }
 
+    /// Get contract source code from Etherscan
+    pub async fn get_contract_source_code(
+        &self,
+        chain_id: &str,
+        address: &str,
+        etherscan_api_key: &str,
+    ) -> Result<Value> {
+        let client = reqwest::Client::new();
+        contract::get_contract_source_code(&client, chain_id, address, etherscan_api_key).await
+    }
 }
