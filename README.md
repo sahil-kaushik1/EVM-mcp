@@ -1,5 +1,7 @@
 # EVM MCP Monorepo
 
+![Website Screenshot](frontend/img/Screenshot%20From%202025-08-31%2005-11-23.png)
+
 This repo contains:
 
 - frontend/: React app (Create React App) deployed on Vercel with Serverless API routes
@@ -73,6 +75,8 @@ Deploy, then test:
 - `GET https://<your-project>.vercel.app/api/health`
 - `GET https://<your-project>.vercel.app/api/mcp/health`
 - Use the app UI at the root URL.
+
+Deployed at: https://evm-mcp.vercel.app
 
 ## CI/CD
 

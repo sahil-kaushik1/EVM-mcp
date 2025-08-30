@@ -1,6 +1,6 @@
 const axios = require('axios');
 
-const MCP_SERVER_URL = process.env.MCP_SERVER_URL || 'http://localhost:8080';
+const MCP_SERVER_URL = process.env.MCP_SERVER_URL || 'https://evm-mcp.onrender.com';
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {

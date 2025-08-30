@@ -13,7 +13,7 @@ const GROQ_MODEL = process.env.GROQ_MODEL || 'llama3-8b-8192';
 
 const SEND_TOOLS = String(process.env.SEND_TOOLS || 'false').toLowerCase() === 'true';
 const LLM_PROVIDER = (process.env.LLM_PROVIDER || (GROQ_API_KEY ? 'groq' : 'openrouter')).toLowerCase();
-const MCP_SERVER_URL = process.env.MCP_SERVER_URL || 'http://localhost:8080';
+const MCP_SERVER_URL = process.env.MCP_SERVER_URL || 'https://evm-mcp.onrender.com';
 
 function getLlmConfig() {
   if (LLM_PROVIDER === 'groq') {
