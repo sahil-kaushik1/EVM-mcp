@@ -1,0 +1,24 @@
+name: Render Keep-Alive
+
+on:
+  schedule:
+    - cron: '*/10 * * * *' # every 10 minutes
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Render URL
+        env:
+          PING_URL: ${{ secrets.RENDER_PING_URL }}
+        run: |
+          if [ -z "$PING_URL" ]; then
+            echo "RENDER_PING_URL secret not set; skipping." && exit 0
+          fi
+          echo "Pinging $PING_URL" 
+          http_code=$(curl -s -o /dev/null -w "%{http_code}" "$PING_URL")
+          echo "HTTP $http_code"
+          if [ "$http_code" -ge 400 ]; then
+            echo "Ping failed with status $http_code" && exit 1
+          fi

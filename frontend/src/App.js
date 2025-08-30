@@ -36,7 +36,7 @@ function App() {
   const testMCPHealth = async () => {
     try {
       // Use proxy GET that performs internal POST to MCP
-      const res = await fetch('http://localhost:3001/api/mcp/health', { method: 'GET' });
+      const res = await fetch('/api/mcp/health', { method: 'GET' });
       if (!res.ok) throw new Error('Proxy /api/mcp/health not OK');
       const data = await res.json();
       setMessages(prev => [
@@ -46,7 +46,7 @@ function App() {
     } catch (e) {
       try {
         // Fallback to frontend server health
-        const res2 = await fetch('http://localhost:3001/api/health', { method: 'GET' });
+        const res2 = await fetch('/api/health', { method: 'GET' });
         const data2 = await res2.json();
         setMessages(prev => [
           ...prev,
@@ -74,7 +74,7 @@ function App() {
 
     try {
       // Call backend API that integrates with Together AI (proxy)
-      const response = await fetch('http://localhost:3001/api/chat', {
+      const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: input, messages: [...messages, userMessage] })

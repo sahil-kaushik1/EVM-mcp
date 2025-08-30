@@ -10,13 +10,45 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
-// OpenRouter API configuration (openai/gpt)
+// LLM provider configuration (OpenRouter default, Groq optional)
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'meta-llama/llama-3.3-8b-instruct:free';
 const OPENROUTER_SITE_URL = process.env.OPENROUTER_SITE_URL || 'http://localhost:3002';
 const OPENROUTER_APP_NAME = process.env.OPENROUTER_APP_NAME || 'EVM Sorcerer';
+
+const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const GROQ_MODEL = process.env.GROQ_MODEL || 'llama3-8b-8192';
+
 const SEND_TOOLS = String(process.env.SEND_TOOLS || 'false').toLowerCase() === 'true';
+const LLM_PROVIDER = (process.env.LLM_PROVIDER || (GROQ_API_KEY ? 'groq' : 'openrouter')).toLowerCase();
+
+function getLlmConfig() {
+  if (LLM_PROVIDER === 'groq') {
+    return {
+      provider: 'groq',
+      url: GROQ_API_URL,
+      model: GROQ_MODEL,
+      headers: {
+        'Authorization': `Bearer ${GROQ_API_KEY}`,
+        'Content-Type': 'application/json'
+      }
+    };
+  }
+  // default: openrouter
+  return {
+    provider: 'openrouter',
+    url: OPENROUTER_API_URL,
+    model: OPENROUTER_MODEL,
+    headers: {
+      'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': OPENROUTER_SITE_URL,
+      'X-Title': OPENROUTER_APP_NAME
+    }
+  };
+}
 
 // MCP server URL
 const MCP_SERVER_URL = 'http://localhost:8080';
@@ -445,7 +477,7 @@ When you need to use a tool, respond with a tool call in the format:
 
 After receiving tool results, provide a natural language response to the user.`
       },
-      ...messages
+      ...(Array.isArray(messages) ? messages : [])
     ];
 
     // Build tools in OpenAI-compatible format (used only if SEND_TOOLS=true)
@@ -461,21 +493,15 @@ After receiving tool results, provide a natural language response to the user.`
     // Primary request with tools
     let response;
     try {
+      const llm = getLlmConfig();
       const primaryBody = {
-        model: OPENROUTER_MODEL,
+        model: llm.model,
         messages: conversation,
         max_tokens: 1000,
         temperature: 0.7
       };
       if (SEND_TOOLS) { primaryBody.tools = toolsForTogether; }
-      response = await axios.post(OPENROUTER_API_URL, primaryBody, {
-        headers: {
-          'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-          'Content-Type': 'application/json',
-          'HTTP-Referer': OPENROUTER_SITE_URL,
-          'X-Title': OPENROUTER_APP_NAME
-        }
-      });
+      response = await axios.post(llm.url, primaryBody, { headers: llm.headers });
     } catch (err) {
       const status = err.response?.status;
       const data = err.response?.data;
@@ -486,19 +512,13 @@ After receiving tool results, provide a natural language response to the user.`
       );
       // Fallback: retry without tools if 400 likely due to tool unsupported
       if (looksLikeToolIssue) {
-        response = await axios.post(OPENROUTER_API_URL, {
-          model: OPENROUTER_MODEL,
+        const llm = getLlmConfig();
+        response = await axios.post(llm.url, {
+          model: llm.model,
           messages: conversation,
           max_tokens: 1000,
           temperature: 0.7
-        }, {
-          headers: {
-            'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-            'Content-Type': 'application/json',
-            'HTTP-Referer': OPENROUTER_SITE_URL,
-            'X-Title': OPENROUTER_APP_NAME
-          }
-        });
+        }, { headers: llm.headers });
       } else {
         throw err;
       }
@@ -650,19 +670,13 @@ After receiving tool results, provide a natural language response to the user.`
       ];
 
       try {
-        const followUp = await axios.post(OPENROUTER_API_URL, {
-          model: OPENROUTER_MODEL,
+        const llm = getLlmConfig();
+        const followUp = await axios.post(llm.url, {
+          model: llm.model,
           messages: augmented,
           max_tokens: 800,
           temperature: 0.5
-        }, {
-          headers: {
-            'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-            'Content-Type': 'application/json',
-            'HTTP-Referer': OPENROUTER_SITE_URL,
-            'X-Title': OPENROUTER_APP_NAME
-          }
-        });
+        }, { headers: llm.headers });
         const maybe = followUp.data.choices?.[0]?.message?.content;
         const maybeStr = normalizeContent(maybe);
         const maybeJson = extractJsonObject(maybeStr);
@@ -693,7 +707,6 @@ After receiving tool results, provide a natural language response to the user.`
         final: true
       }
     });
-
   } catch (error) {
     const status = error.response?.status;
     const data = error.response?.data;
@@ -708,6 +721,46 @@ After receiving tool results, provide a natural language response to the user.`
       router_status: status || null,
       router_error: data || null
     });
+  }
+});
+
+// MCP call proxy (QA endpoint): POST { method: string, params: object }
+app.post('/api/mcp/call', async (req, res) => {
+  try {
+    const { method, params } = req.body || {};
+    if (!method || typeof method !== 'string') {
+      return res.status(400).json({ error: 'method is required' });
+    }
+    const payload = {
+      jsonrpc: '2.0',
+      id: Date.now(),
+      method,
+      params: params || {}
+    };
+    const response = await axios.post(`${MCP_SERVER_URL}/api/rpc`, payload, {
+      headers: { 'Content-Type': 'application/json' }
+    });
+    return res.json({ status: 'ok', result: response.data.result ?? null, raw: response.data });
+  } catch (error) {
+    const status = error.response?.status || 502;
+    return res.status(status).json({ status: 'error', message: 'MCP call failed', details: error.message, data: error.response?.data });
+  }
+});
+
+// MCP tools list (QA endpoint)
+app.get('/api/mcp/tools', async (req, res) => {
+  try {
+    const response = await axios.post(`${MCP_SERVER_URL}/api/rpc`, {
+      jsonrpc: '2.0',
+      id: Date.now(),
+      method: 'tools/list',
+      params: {}
+    }, {
+      headers: { 'Content-Type': 'application/json' }
+    });
+    return res.json({ status: 'ok', tools: response.data.result || [] });
+  } catch (error) {
+    return res.status(502).json({ status: 'error', message: 'Failed to list tools', details: error.message });
   }
 });
 
@@ -754,7 +807,7 @@ async function executeMCPTool(toolCall) {
 
   try {
     let response;
-    if (directMethods.includes(name)) {
+    if (directMethods.includes(name) || (typeof name === 'string' && name.startsWith('tools/'))) {
       // Call directly
       response = await axios.post(`${MCP_SERVER_URL}/api/rpc`, {
         jsonrpc: '2.0',

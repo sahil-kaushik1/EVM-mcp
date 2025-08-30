@@ -149,6 +149,59 @@ Wallet material is handled by the MCP wallet storage module and persisted on dis
   - `tests/test_mcp_server.sh`
   - `tests/test_persistent_wallet.sh`
 
+## Installation (binary) and service
+
+Quick install using helper script:
+
+```bash
+cd mcp-server
+bash scripts/install.sh
+# then edit .env to set CHAIN_RPC_URLS, etc.
+# start HTTP server
+PORT=8080 ./target/release/evm_mcp
+```
+
+Install prebuilt binary from GitHub Releases (Linux/macOS):
+
+```bash
+cd mcp-server
+# optional: export GITHUB_REPO=owner/repo if running outside a git clone
+bash scripts/get-release.sh            # latest
+bash scripts/get-release.sh v0.1.0     # specific tag
+~/.local/bin/evm_mcp --help
+```
+
+Systemd service example (after running install.sh):
+
+```
+[Unit]
+Description=EVM MCP Server
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/path/to/repo/mcp-server
+EnvironmentFile=/path/to/repo/mcp-server/.env
+ExecStart=/path/to/repo/mcp-server/target/release/evm_mcp
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+
+## Deploy to Render.com
+
+1. Create a new Web Service from this directory (`mcp-server/`).
+2. Build command: `cargo build --release`
+3. Start command: `./target/release/evm_mcp`
+4. Add Environment Variables (see Configuration above). Minimum:
+   - `CHAIN_RPC_URLS` JSON map
+   - `PORT` (Render provides `$PORT`; the server respects `PORT`)
+5. After deploy, note the public base URL, e.g., `https://your-service.onrender.com`.
+6. Set this as `MCP_SERVER_URL` in your Vercel project (frontend) so serverless routes can reach it.
+
+Keep-alive: A GitHub Action in `.github/workflows/render-keepalive.yml` can ping your Render URL to keep it awake. Set repository secret `RENDER_PING_URL` to your public health endpoint (e.g., `https://your-service.onrender.com/api/health`).
+
 ## Dependencies
 
 Key crates (see `Cargo.toml`):

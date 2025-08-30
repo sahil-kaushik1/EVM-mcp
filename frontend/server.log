@@ -5,3 +5,8 @@
 [dotenv@17.2.1] injecting env (5) from .env -- tip: ⚙️  enable debug logging with { debug: true }
 Frontend API server running on port 3001
 Make sure to set OPENROUTER_API_KEY in your .env file
+Error in chat endpoint: {
+  message: 'Request failed with status code 401',
+  status: 401,
+  data: { error: { message: 'User not found.', code: 401 } }
+}

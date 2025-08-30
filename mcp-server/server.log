@@ -180,11 +180,11 @@ warning: structure field `mcpServers` should have a snake case name
    = note: `#[warn(non_snake_case)]` on by default
 
 warning: `evm-mcp-server` (lib) generated 26 warnings (run `cargo fix --lib -p evm-mcp-server` to apply 23 suggestions)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.18s
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.19s
      Running `target/debug/evm_mcp --mcp`
-[2m2025-08-30T21:06:18.328552Z[0m [32m INFO[0m [2mevm_mcp_server::config[0m[2m:[0m Using default RPC URL for chain 1: https://eth.llamarpc.com
-[2m2025-08-30T21:06:18.328616Z[0m [32m INFO[0m [2mevm_mcp_server::config[0m[2m:[0m Using default RPC URL for chain 11155111: https://rpc.sepolia.org
-[2m2025-08-30T21:06:18.328621Z[0m [32m INFO[0m [2mevm_mcp_server::config[0m[2m:[0m Using default RPC URL for chain 324: https://mainnet.era.zksync.io
-[2m2025-08-30T21:06:18.328634Z[0m [32m INFO[0m [2mevm_mcp_server::config[0m[2m:[0m Using default RPC URL for chain 300: https://sepolia.era.zksync.io
-[2m2025-08-30T21:06:18.328763Z[0m [32m INFO[0m [2mevm_mcp_server::config[0m[2m:[0m Loaded Etherscan API key from mcp.json
-[2m2025-08-30T21:06:18.328774Z[0m [32m INFO[0m [2mevm_mcp_server::config[0m[2m:[0m Etherscan API key configured
+[2m2025-08-30T22:20:29.638751Z[0m [32m INFO[0m [2mevm_mcp_server::config[0m[2m:[0m Using default RPC URL for chain 1: https://eth.llamarpc.com
+[2m2025-08-30T22:20:29.638801Z[0m [32m INFO[0m [2mevm_mcp_server::config[0m[2m:[0m Using default RPC URL for chain 11155111: https://rpc.sepolia.org
+[2m2025-08-30T22:20:29.638806Z[0m [32m INFO[0m [2mevm_mcp_server::config[0m[2m:[0m Using default RPC URL for chain 324: https://mainnet.era.zksync.io
+[2m2025-08-30T22:20:29.638816Z[0m [32m INFO[0m [2mevm_mcp_server::config[0m[2m:[0m Using default RPC URL for chain 300: https://sepolia.era.zksync.io
+[2m2025-08-30T22:20:29.638937Z[0m [32m INFO[0m [2mevm_mcp_server::config[0m[2m:[0m Loaded Etherscan API key from mcp.json
+[2m2025-08-30T22:20:29.638946Z[0m [32m INFO[0m [2mevm_mcp_server::config[0m[2m:[0m Etherscan API key configured
