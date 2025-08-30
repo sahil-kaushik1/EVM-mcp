@@ -1,22 +1,20 @@
 {
   "mcpServers": {
     "evm-mcp-release": {
-      "command": "PATH_TO_REPO/evm-mcp/mcp-server/target/release/evm_mcp",
-      "args": ["--mcp"],
+      "command": "/home/sahilkaushik/study_material/blockchain/foundry/EVM-mcp/mcp-server/target/release/evm_mcp",
+      "args": [
+        "--mcp"
+      ],
       "env": {
-        "CHAIN_RPC_URLS": {
-          "1": "https://mainnet.infura.io/v3/YOUR-INFURA-KEY",
-          "5": "https://goerli.infura.io/v3/YOUR-INFURA-KEY",
-          "56": "https://bsc-dataseed.binance.org/",
-          "97": "https://data-seed-prebsc-1-s1.binance.org:8545/",
-          "137": "https://polygon-rpc.com/",
-          "80001": "https://rpc-mumbai.maticvigil.com/"
-        },
-        "DEFAULT_CHAIN_ID": "56",
+        "CHAIN_RPC_URLS": "{\"1\":\"https://eth.llamarpc.com\",\"11155111\":\"https://rpc.sepolia.org\",\"324\":\"https://mainnet.era.zksync.io\",\"300\":\"https://sepolia.era.zksync.io\"}",
+        "DEFAULT_CHAIN_ID": "1",
         "DEFAULT_GAS_LIMIT": "21000",
         "DEFAULT_GAS_PRICE": "5000000000",
-        "WALLET_STORAGE_PATH": "./wallets.json"
-      }
+        "WALLET_STORAGE_PATH": "./wallets.json",
+        "ETHERSCAN_API_KEY": "JGUKX8GXM3HVY74GK94WQR68RVBNE9GZ5A",
+        "PORT": "8080"
+      },
+      "disabled": false
     }
   }
 }

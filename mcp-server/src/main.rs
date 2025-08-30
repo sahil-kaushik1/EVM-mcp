@@ -6,7 +6,7 @@
 //!
 //! ## Features
 //!
-//! - **Multi-chain Support**: Works with any EVM-compatible blockchain (Ethereum, BSC, Polygon, etc.)
+//! - **Multi-chain Support**: Supports Ethereum Mainnet, Sepolia Testnet, zkSync Mainnet, and zkSync Sepolia Testnet
 //! - **Secure Wallet Management**: Encrypted wallet storage with master password protection
 //! - **Transaction Operations**: Send transactions, check balances, interact with contracts
 //! - **MCP Protocol**: Compatible with MCP clients for AI assistants
@@ -46,16 +46,12 @@ use evm_mcp_server::{
         tx::send_transaction_handler,
         wallet,
     },
-    blockchain::{
-        client::EvmClient,
-        nonce_manager::NonceManager,
-        wallet_manager::WalletManager,
-    },
+    blockchain::{client::EvmClient, nonce_manager::NonceManager, wallet_manager::WalletManager},
     config::Config,
     mcp::{
         handler::handle_mcp_request,
         protocol::{error_codes, Request, Response},
-        wallet_storage::{load_or_create_wallet_storage},
+        wallet_storage::load_or_create_wallet_storage,
     },
     AppState,
 };
@@ -75,10 +71,8 @@ async fn run_http_server(state: AppState) {
     let api_router = Router::new()
         // Health check
         .route("/health", get(health_handler))
-        
         // Wallet management
         .merge(wallet::create_wallet_router())
-        
         // Blockchain data
         .route("/balance/:chain_id/:address", get(get_balance_handler))
         .route(
@@ -86,7 +80,6 @@ async fn run_http_server(state: AppState) {
             get(get_transaction_history_handler),
         )
         .route("/tx/send", post(send_transaction_handler))
-        
         // Contract interaction
         .route("/contract/:chain_id/:address", get(get_contract_handler))
         .route(
@@ -101,7 +94,6 @@ async fn run_http_server(state: AppState) {
             "/contract/:chain_id/:address/is_contract",
             get(get_is_contract_handler),
         )
-        
         // JSON-RPC endpoint for MCP tool calls
         .route("/rpc", post(rpc_handler));
 
@@ -115,14 +107,16 @@ async fn run_http_server(state: AppState) {
     let addr = SocketAddr::from(([127, 0, 0, 1], state.config.port));
     info!("🚀 HTTP Server listening on {}", addr);
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await.unwrap();
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await
+    .unwrap();
 }
 
 // Forward JSON-RPC requests over HTTP to the MCP handler
-async fn rpc_handler(
-    State(state): State<AppState>,
-    Json(req): Json<Request>,
- ) -> Json<Response> {
+async fn rpc_handler(State(state): State<AppState>, Json(req): Json<Request>) -> Json<Response> {
     match handle_mcp_request(req, state).await {
         Some(resp) => Json(resp),
         None => Json(Response::error(
@@ -213,11 +207,13 @@ async fn main() {
 
     // Initialize EVM client with RPC URLs
     let evm_client = EvmClient::new(&config.chain_rpc_urls);
-    
+
     let nonce_manager = NonceManager::new();
 
     // Initialize wallet storage
-    let wallet_storage_path = config.wallet_storage_path.clone()
+    let wallet_storage_path = config
+        .wallet_storage_path
+        .clone()
         .map(PathBuf::from)
         .unwrap_or_else(|| {
             // Default to a path in the user's home directory if not specified in config
@@ -238,15 +234,19 @@ async fn main() {
     }
 
     // Create or load wallet storage
-    let wallet_storage = match load_or_create_wallet_storage(&wallet_storage_path, &config.master_password) {
-        Ok(storage) => storage,
-        Err(e) => {
-            error!("Failed to initialize wallet storage: {}", e);
-            return;
-        }
-    };
-    
-    info!("Wallet storage initialized at: {}", wallet_storage_path.display());
+    let wallet_storage =
+        match load_or_create_wallet_storage(&wallet_storage_path, &config.master_password) {
+            Ok(storage) => storage,
+            Err(e) => {
+                error!("Failed to initialize wallet storage: {}", e);
+                return;
+            }
+        };
+
+    info!(
+        "Wallet storage initialized at: {}",
+        wallet_storage_path.display()
+    );
 
     // Create wallet manager
     let wallet_manager = WalletManager::new(wallet_storage.clone());

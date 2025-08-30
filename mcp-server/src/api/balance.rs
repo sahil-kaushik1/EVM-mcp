@@ -29,8 +29,28 @@ pub async fn get_balance_handler(
     Path(path): Path<BalancePath>,
     State(state): State<AppState>, // FIX: Use AppState
 ) -> impl IntoResponse {
-    // FIX: Use the client from the shared state
-    match state.evm_client.get_balance(&path.chain_id, &path.address).await {
+    // Check if Etherscan API key is configured
+    let etherscan_api_key = match state.config.etherscan_api_key.as_ref() {
+        Some(key) => key,
+        None => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "ETHERSCAN_API_KEY is not configured",
+            )
+                .into_response();
+        }
+    };
+
+    // Use Etherscan API directly
+    let client = reqwest::Client::new();
+    match crate::blockchain::services::balance::get_balance(
+        &client,
+        &path.chain_id,
+        &path.address,
+        etherscan_api_key,
+    )
+    .await
+    {
         Ok(balance_response) => {
             let output = BalanceOutput {
                 chain_id: path.chain_id.clone(),

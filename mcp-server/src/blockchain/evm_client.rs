@@ -31,7 +31,11 @@ impl EvmClient {
             if let Ok(provider) = Provider::<Http>::try_from(url.as_str()) {
                 providers.insert(chain_id.clone(), Arc::new(provider));
             } else {
-                tracing::warn!("Failed to create provider for chain {} at {}", chain_id, url);
+                tracing::warn!(
+                    "Failed to create provider for chain {} at {}",
+                    chain_id,
+                    url
+                );
             }
         }
 
@@ -48,15 +52,11 @@ impl EvmClient {
 
     /// Get the balance of an address in wei
     pub async fn get_balance(&self, chain_id: &str, address: &str) -> Result<BalanceResponse> {
-        let provider = self.get_provider(chain_id)?;
-        let address: Address = address.parse().map_err(|e| anyhow!("Invalid address: {}", e))?;
-        
-        let balance = provider.get_balance(address, None).await?;
-        
-        Ok(BalanceResponse {
-            amount: balance.to_string(),
-            denom: "wei".to_string(),
-        })
+        // This method is now deprecated - balance fetching is handled via Etherscan API
+        // in the services layer. This method is kept for backward compatibility.
+        Err(anyhow!(
+            "Balance fetching should use Etherscan API directly"
+        ))
     }
 
     /// Create a new wallet
@@ -94,23 +94,21 @@ impl EvmClient {
         let wallet = LocalWallet::from_str(private_key)
             .map_err(|e| anyhow!("Invalid private key: {}", e))?;
 
-        let rpc_url = self.providers.get(chain_id)
+        let rpc_url = self
+            .providers
+            .get(chain_id)
             .ok_or_else(|| anyhow!("No provider available for chain: {}", chain_id))?
             .url()
             .to_string();
 
-        transactions::send_evm_transaction(
-            &rpc_url,
-            wallet,
-            tx_request,
-            nonce_manager,
-        )
-        .await
+        transactions::send_evm_transaction(&rpc_url, wallet, tx_request, nonce_manager).await
     }
 
     /// Get contract information
     pub async fn get_contract(&self, chain_id: &str, address: &str) -> Result<Value> {
-        let rpc_url = self.providers.get(chain_id)
+        let rpc_url = self
+            .providers
+            .get(chain_id)
             .ok_or_else(|| anyhow!("No provider available for chain: {}", chain_id))?
             .url()
             .to_string();
@@ -120,7 +118,9 @@ impl EvmClient {
 
     /// Get contract bytecode
     pub async fn get_contract_code(&self, chain_id: &str, address: &str) -> Result<Value> {
-        let rpc_url = self.providers.get(chain_id)
+        let rpc_url = self
+            .providers
+            .get(chain_id)
             .ok_or_else(|| anyhow!("No provider available for chain: {}", chain_id))?
             .url()
             .to_string();
@@ -129,12 +129,10 @@ impl EvmClient {
     }
 
     /// Get contract transactions
-    pub async fn get_contract_transactions(
-        &self,
-        chain_id: &str,
-        address: &str,
-    ) -> Result<Value> {
-        let rpc_url = self.providers.get(chain_id)
+    pub async fn get_contract_transactions(&self, chain_id: &str, address: &str) -> Result<Value> {
+        let rpc_url = self
+            .providers
+            .get(chain_id)
             .ok_or_else(|| anyhow!("No provider available for chain: {}", chain_id))?
             .url()
             .to_string();
@@ -144,7 +142,9 @@ impl EvmClient {
 
     /// Check if an address is a contract
     pub async fn is_contract(&self, chain_id: &str, address: &str) -> Result<bool> {
-        let rpc_url = self.providers.get(chain_id)
+        let rpc_url = self
+            .providers
+            .get(chain_id)
             .ok_or_else(|| anyhow!("No provider available for chain: {}", chain_id))?
             .url()
             .to_string();
@@ -153,7 +153,11 @@ impl EvmClient {
     }
 
     /// Estimate fees for a transaction
-    pub async fn estimate_fees(&self, chain_id: &str, request: &crate::blockchain::models::EstimateFeesRequest) -> Result<crate::blockchain::models::EstimateFeesResponse> {
+    pub async fn estimate_fees(
+        &self,
+        chain_id: &str,
+        request: &crate::blockchain::models::EstimateFeesRequest,
+    ) -> Result<crate::blockchain::models::EstimateFeesResponse> {
         let provider = self.get_provider(chain_id)?;
 
         // Estimate gas

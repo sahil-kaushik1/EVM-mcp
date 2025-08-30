@@ -14,21 +14,31 @@ pub async fn send_faucet_tokens(
     _rpc_url: &str,
     chain_id: &str,
 ) -> Result<String> {
-    // For EVM-only, always use EVM faucet chain
-    let faucet_chain = if chain_id.contains("testnet") {
+    // For supported chains, determine if testnet or mainnet
+    let faucet_chain = if chain_id == "11155111" || chain_id == "300" {
         "testnet"
     } else {
         "mainnet"
     };
 
-    info!("Requesting faucet via API for {} on {}", recipient_address, faucet_chain);
+    info!(
+        "Requesting faucet via API for {} on {}",
+        recipient_address, faucet_chain
+    );
 
     let client = reqwest::Client::new();
-    let url = format!("{}/faucet/request", config.faucet_api_url.as_ref().unwrap_or(&"".to_string()).trim_end_matches('/'));
+    let url = format!(
+        "{}/faucet/request",
+        config
+            .faucet_api_url
+            .as_ref()
+            .unwrap_or(&"".to_string())
+            .trim_end_matches('/')
+    );
 
     #[derive(Deserialize)]
     struct FaucetResponse {
-        #[serde(rename = "txHash")] 
+        #[serde(rename = "txHash")]
         tx_hash: String,
     }
 
