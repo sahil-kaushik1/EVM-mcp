@@ -405,7 +405,7 @@ app.post('/api/chat', async (req, res) => {
         const result = await executeMCPTool({ name: 'get_balance', arguments: { chain_id, address }, id: 'local-intent' });
         // Reuse local summarizer to produce human-friendly text
         function formatWeiToEth(weiStr) {
-          try { const wei = BigInt(weiStr); const base = 1000000000000000000n; const whole = wei / base; const frac = wei % base; if (frac === 0n) return `${whole.toString()} ETH`; const decimals = 6n; const scale = 10n ** decimals; const fracScaled = (frac * scale) / base; const fracStr = fracScaled.toString().padStart(Number(decimals), '0').replace(/0+$/,''); return `${whole.toString()}.${fracStr} ETH`; } catch { return `${weiStr} wei`; }
+          try { const wei = BigInt(weiStr); const base = 1000000000000000000n; const whole = wei / base; const frac = wei % base; if (frac === 0n) return `${whole.toString()} ETH`; const decimals = 6n; const scale = 10n ** decimals; const fracScaled = (frac * scale) / base; const fracStr = fracScaled.toString().padStart(Number(decimals), '0').replace(/0+$/, ''); return `${whole.toString()}.${fracStr} ETH`; } catch { return `${weiStr} wei`; }
         }
         let finalContent;
         if (result?.balance?.amount && result?.balance?.denom === 'wei') {
@@ -510,18 +510,18 @@ After receiving tool results, provide a natural language response to the user.`
     function extractJsonObject(str) {
       if (typeof str !== 'string') return null;
       // Try simple parse first
-      try { return JSON.parse(str); } catch (_) {}
+      try { return JSON.parse(str); } catch (_) { }
       // Try to find the largest {...} block
       const first = str.indexOf('{');
       const last = str.lastIndexOf('}');
       if (first !== -1 && last !== -1 && last > first) {
         const candidate = str.slice(first, last + 1);
-        try { return JSON.parse(candidate); } catch (_) {}
+        try { return JSON.parse(candidate); } catch (_) { }
       }
       // Try fenced code blocks
       const match = str.match(/```json\n([\s\S]*?)\n```/i);
       if (match && match[1]) {
-        try { return JSON.parse(match[1]); } catch (_) {}
+        try { return JSON.parse(match[1]); } catch (_) { }
       }
       return null;
     }
@@ -598,7 +598,7 @@ After receiving tool results, provide a natural language response to the user.`
         const decimals = 6n;
         const scale = 10n ** decimals; // 1e6
         const fracScaled = (frac * scale) / base;
-        const fracStr = fracScaled.toString().padStart(Number(decimals), '0').replace(/0+$/,'');
+        const fracStr = fracScaled.toString().padStart(Number(decimals), '0').replace(/0+$/, '');
         return `${whole.toString()}.${fracStr} ETH`;
       } catch {
         return `${weiStr} wei`;
@@ -737,45 +737,43 @@ app.get('/api/mcp/health', async (req, res) => {
 
 // Execute MCP tool
 async function executeMCPTool(toolCall) {
-  const { name, arguments: args } = toolCall;
+  const { name, arguments: args, id } = toolCall;
 
-  // Map tool names to MCP method names if needed
-  const methodMap = {
-    'get_balance': 'get_balance',
-    'create_wallet': 'create_wallet',
-    'import_wallet': 'import_wallet',
-    'search_events': 'search_events',
-    'request_faucet': 'request_faucet',
-    'register_wallet': 'register_wallet',
-    'list_wallets': 'list_wallets',
-    'transfer_from_wallet': 'transfer_from_wallet',
-    'transfer_evm': 'transfer_evm',
-    'transfer_nft_evm': 'transfer_nft_evm',
-    'get_contract': 'get_contract',
-    'get_contract_code': 'get_contract_code',
-    'get_contract_transactions': 'get_contract_transactions',
-    'get_transaction_history': 'get_transaction_history',
-    'get_token_info': 'get_token_info',
-    'get_token_balance': 'get_token_balance',
-    'transfer_token': 'transfer_token',
-    'get_nft_info': 'get_nft_info',
-    'check_nft_ownership': 'check_nft_ownership',
-    'get_nft_balance': 'get_nft_balance',
-    'is_contract': 'is_contract',
-    'read_contract': 'read_contract',
-    'write_contract': 'write_contract',
-    'get_block_number': 'get_block_number'
-  };
-
-  const method = methodMap[name] || name;
+  // Methods that can be called directly (convenience aliases in MCP server)
+  const directMethods = [
+    'get_balance',
+    'request_faucet',
+    'transfer_evm',
+    'transfer_nft_evm',
+    'search_events',
+    'get_contract',
+    'get_contract_code',
+    'get_contract_transactions',
+    'get_transaction_history'
+  ];
 
   try {
-    const response = await axios.post(`${MCP_SERVER_URL}/api/rpc`, {
-      jsonrpc: '2.0',
-      id: Date.now(),
-      method: method,
-      params: args
-    });
+    let response;
+    if (directMethods.includes(name)) {
+      // Call directly
+      response = await axios.post(`${MCP_SERVER_URL}/api/rpc`, {
+        jsonrpc: '2.0',
+        id: Date.now(),
+        method: name,
+        params: args
+      });
+    } else {
+      // Call via tools/call
+      response = await axios.post(`${MCP_SERVER_URL}/api/rpc`, {
+        jsonrpc: '2.0',
+        id: Date.now(),
+        method: 'tools/call',
+        params: {
+          name: name,
+          arguments: args
+        }
+      });
+    }
 
     return response.data.result;
   } catch (error) {
