@@ -108,7 +108,8 @@ async fn run_http_server(state: AppState) {
         .layer(TraceLayer::new_for_http())
         .layer(CorsLayer::permissive());
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], state.config.port));
+    // Bind to 0.0.0.0 for container/cloud platforms (Render, Fly, Railway) to detect open port
+    let addr = SocketAddr::from(([0, 0, 0, 0], state.config.port));
     info!("🚀 HTTP Server listening on {}", addr);
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(
