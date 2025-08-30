@@ -117,8 +117,8 @@ pub async fn send_evm_transaction(
 
 
 pub async fn send_transaction(
-    config: &Config,
-    chain_id: &str,
+    config: &Config,  // Configuration containing default values
+    _chain_id: &str,  // Currently unused, kept for future use
     recipient_address: &str,
     amount: u64,
     nonce_manager: &crate::blockchain::nonce_manager::NonceManager,

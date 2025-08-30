@@ -1,9 +1,7 @@
 pub mod balance;
 pub mod contract;
 pub mod discord;
-pub mod event;
 pub mod faucet;
-pub mod fees;
 pub mod history;
 pub mod transactions;
 pub mod wallet;

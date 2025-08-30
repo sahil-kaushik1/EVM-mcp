@@ -148,8 +148,8 @@ impl WalletManager {
     
     /// Derive a wallet from a mnemonic phrase
     async fn derive_wallet_from_mnemonic(&self, mnemonic_phrase: &str) -> Result<WalletResponse> {
-        // Parse the mnemonic
-        let mnemonic = Mnemonic::parse_in(Language::English, mnemonic_phrase)
+        // Parse the mnemonic (stored in _mnemonic to avoid unused variable warning)
+        let _mnemonic = Mnemonic::parse_in(Language::English, mnemonic_phrase)
             .map_err(|e| anyhow!("Invalid mnemonic phrase: {}", e))?;
         
         // Derive the wallet using the default Ethereum derivation path

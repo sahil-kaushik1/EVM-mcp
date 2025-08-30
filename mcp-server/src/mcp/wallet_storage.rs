@@ -159,7 +159,7 @@ impl WalletStorage {
     }
 
     /// Encrypt a private key with the master password
-    fn encrypt_private_key(&self, private_key: &str, master_password: &str) -> Result<String> {
+    fn encrypt_private_key(&self, private_key: &str, _master_password: &str) -> Result<String> {
         // In a real implementation, you would use a proper encryption scheme like AES-GCM
         // For now, we'll just return the key as-is (NOT SECURE FOR PRODUCTION)
         Ok(private_key.to_string())

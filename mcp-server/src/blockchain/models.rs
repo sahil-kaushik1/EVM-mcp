@@ -15,6 +15,8 @@ pub enum WalletGenerationError {
     DerivationError(#[from] anyhow::Error),
     #[error("key generation failed: {0}")]
     KeyGenerationFailed(String),
+    #[error("invalid address format: {0}")]
+    InvalidAddress(String),
 }
 
 #[derive(Error, Debug)]
@@ -216,42 +218,7 @@ pub struct TokenInfoResponse {
     pub contract_address: String,
 }
 
-// --- Fee Estimation Models ---
 
-/// Defines the structure for a fee estimation request.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct EstimateFeesRequest {
-    pub from: String,
-    pub to: String,
-    pub amount: String,
-}
-
-/// Defines the structure for a fee estimation response.
-#[derive(Debug, Serialize)]
-pub struct EstimateFeesResponse {
-    pub estimated_gas: String,
-    pub gas_price: String,
-    pub total_fee: String,
-    pub denom: String,
-}
-
-/// Represents the query parameters for searching events.
-#[derive(Debug, Clone)]
-pub struct EventQuery {
-    pub contract_address: Option<String>,
-    pub event_type: Option<String>,
-    pub attribute_key: Option<String>,
-    pub attribute_value: Option<String>,
-    pub from_block: Option<u64>,
-    pub to_block: Option<u64>,
-}
-
-/// The response structure for the search_events endpoint.
-#[derive(Serialize, Deserialize, Debug)]
-pub struct SearchEventsResponse {
-    pub txs: Vec<serde_json::Value>,
-    pub total_count: u32,
-}
 
 
 // ... (existing structs)

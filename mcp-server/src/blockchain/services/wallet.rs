@@ -1,4 +1,4 @@
-use anyhow::{Result, Context};
+use anyhow::Result;
 use bip39::{Language, Mnemonic};
 use ethers_core::{
     k256::ecdsa::SigningKey,
@@ -8,9 +8,7 @@ use ethers_core::{
     },
 };
 use rand::RngCore;
-use std::str::FromStr;
 use tracing::info;
-use secrecy::{Secret, SecretString, ExposeSecret};
 use hex;
 
 use crate::blockchain::models::{
@@ -19,6 +17,11 @@ use crate::blockchain::models::{
     WalletGenerationError,
     ImportWalletError,
 };
+
+/// Utility function to normalize Ethereum addresses
+fn normalize_address(address: &str) -> String {
+    address.trim_start_matches("0x").to_lowercase()
+}
 
 /// Wallet manager for EVM-compatible wallets
 #[derive(Debug, Clone)]
@@ -43,34 +46,42 @@ impl EvmWalletManager {
         
         // Derive the private key from the mnemonic (using the first account)
         let seed = mnemonic.to_seed("");
-        let private_key = self.derive_private_key(&seed[..32])
-            .map_err(|e| WalletGenerationError::KeyGenerationFailed(e.to_string()))?;
+        let private_key = self.derive_private_key(&seed[..32])?;
         
-        // Create the wallet
-        let wallet = EvmWallet::from_private_key(&private_key)?;
-        let wallet_name = format!("wallet_{}", &wallet.address[2..8]);
-        let mut response = wallet.to_wallet_response(&wallet_name);
-        response.mnemonic = Some(phrase);
+        // Derive the address from the private key
+        let address = self.private_key_to_address(&private_key)?;
+        let wallet_name = format!("wallet_{}", &normalize_address(&address)[..8]);
         
-        Ok(response)
+        // Create the wallet response
+        Ok(WalletResponse {
+            name: wallet_name,
+            address,
+            private_key: format!("0x{}", hex::encode(private_key)),
+            mnemonic: Some(phrase),
+            created_at: Some(chrono::Utc::now()),
+        })
     }
 
     /// Import a wallet from a mnemonic phrase or private key
     pub fn import_wallet(&self, input: &str) -> Result<WalletResponse, ImportWalletError> {
         info!("Attempting to import wallet");
         
-        // Try to parse as private key first
-        if let Ok(wallet) = self.import_private_key(input) {
-            return Ok(wallet);
+        // Try to parse as private key first (0x-prefixed hex string)
+        if input.starts_with("0x") && input.len() == 66 {
+            if let Ok(wallet) = self.import_private_key(input) {
+                return Ok(wallet);
+            }
         }
         
-        // Then try as mnemonic
-        if let Ok(wallet) = self.import_mnemonic(input) {
-            return Ok(wallet);
+        // Then try as mnemonic (space-separated words)
+        if input.split_whitespace().count() >= 12 {
+            if let Ok(wallet) = self.import_mnemonic(input) {
+                return Ok(wallet);
+            }
         }
         
         Err(ImportWalletError::InvalidInput(
-            "Input must be a valid private key (hex with 0x prefix) or mnemonic phrase".to_string(),
+            "Input must be a valid private key (0x-prefixed 64-char hex) or BIP39 mnemonic phrase".to_string(),
         ))
     }
     
@@ -89,13 +100,25 @@ impl EvmWalletManager {
             ));
         }
         
-        // Create wallet from private key
-        let wallet = EvmWallet::from_private_key(&private_key_bytes)
+        // Convert to fixed-size array
+        let mut private_key = [0u8; 32];
+        private_key.copy_from_slice(&private_key_bytes);
+        
+        // Derive the address from the private key
+        let address = self.private_key_to_address(&private_key)
             .map_err(|e| ImportWalletError::InvalidPrivateKey(e.to_string()))?;
             
         // Generate a default wallet name based on the address
-        let wallet_name = format!("wallet_{}", &wallet.address[2..8]);
-        Ok(wallet.to_wallet_response(&wallet_name))
+        let wallet_name = format!("wallet_{}", &normalize_address(&address)[..8]);
+        
+        // Create the wallet response
+        Ok(WalletResponse {
+            name: wallet_name,
+            address,
+            private_key: format!("0x{}", hex::encode(private_key)),
+            mnemonic: None,
+            created_at: Some(chrono::Utc::now()),
+        })
     }
     
     /// Import a wallet from a mnemonic phrase
@@ -109,16 +132,21 @@ impl EvmWalletManager {
         let private_key = self.derive_private_key(&seed[..32])
             .map_err(|e| ImportWalletError::InvalidMnemonic(e.to_string()))?;
         
-        // Create the wallet
-        let wallet = EvmWallet::from_private_key(&private_key)
+        // Derive the address from the private key
+        let address = self.private_key_to_address(&private_key)
             .map_err(|e| ImportWalletError::InvalidMnemonic(e.to_string()))?;
         
         // Generate a default wallet name based on the address
-        let wallet_name = format!("wallet_{}", &wallet.address[2..8]);
-        let mut response = wallet.to_wallet_response(&wallet_name);
-        response.mnemonic = Some(mnemonic_phrase.to_string());
+        let wallet_name = format!("wallet_{}", &normalize_address(&address)[..8]);
         
-        Ok(response)
+        // Create the wallet response
+        Ok(WalletResponse {
+            name: wallet_name,
+            address,
+            private_key: format!("0x{}", hex::encode(private_key)),
+            mnemonic: Some(mnemonic_phrase.to_string()),
+            created_at: Some(chrono::Utc::now()),
+        })
     }
     
     /// Derive a private key from seed bytes (first 32 bytes of BIP39 seed)
@@ -145,23 +173,44 @@ impl EvmWalletManager {
         let signing_key = SigningKey::from_bytes(private_key.into())
             .map_err(|e| WalletGenerationError::KeyGenerationFailed(e.to_string()))?;
         
-        // Get the address from the signing key
-        let address = secret_key_to_address(&signing_key);
-        Ok(format!("0x{:x}", address))
+        // Derive the public key and then the address
+        let public_key = signing_key.verifying_key();
+        let public_key = public_key.to_encoded_point(false);
+        let public_key = public_key.as_bytes();
+        
+        // Take the last 20 bytes of the keccak256 hash of the public key
+        let hash = keccak256(&public_key[1..]);
+        let address = format!("0x{}", hex::encode(&hash[12..]));
+        
+        Ok(address)
     }
     
     /// Validate an EVM address format
-    pub fn validate_address(&self, address: &str) -> bool {
-        // Basic validation for EVM addresses (0x + 40 hex chars, case-insensitive)
-        address.starts_with("0x")
-            && address.len() == 42
-            && address[2..].chars().all(|c| c.is_ascii_hexdigit())
+    fn validate_address(&self, address: &str) -> bool {
+        if !address.starts_with("0x") || address.len() != 42 {
+            return false;
+        }
+        // Check if it's a valid hex string
+        hex::decode(&address[2..]).is_ok()
     }
-}
-
-// Implementation of EvmWallet methods
-impl EvmWallet {
-    // from_private_key implementation has been moved to the models.rs file
+    
+    /// Get wallet information without requiring external APIs
+    pub fn get_wallet_info(&self, address: &str) -> Result<WalletResponse, WalletGenerationError> {
+        if !self.validate_address(address) {
+            return Err(WalletGenerationError::InvalidAddress(
+                "Invalid Ethereum address format".to_string(),
+            ));
+        }
+        
+        // Create a basic wallet response with just the address
+        Ok(WalletResponse {
+            name: format!("wallet_{}", &normalize_address(address)[..8]),
+            address: address.to_string(),
+            private_key: String::new(), // Empty since we don't have the private key
+            mnemonic: None,
+            created_at: Some(chrono::Utc::now()),
+        })
+    }
 }
 
 /// Create a new EVM wallet

@@ -51,9 +51,11 @@ impl EvmClient {
     }
 
     /// Get the balance of an address in wei
-    pub async fn get_balance(&self, chain_id: &str, address: &str) -> Result<BalanceResponse> {
-        // This method is now deprecated - balance fetching is handled via Etherscan API
-        // in the services layer. This method is kept for backward compatibility.
+    /// 
+    /// # Note
+    /// This method is now deprecated - balance fetching is handled via Etherscan API
+    /// in the services layer. This method is kept for backward compatibility.
+    pub async fn get_balance(&self, _chain_id: &str, _address: &str) -> Result<BalanceResponse> {
         Err(anyhow!(
             "Balance fetching should use Etherscan API directly"
         ))
@@ -72,7 +74,7 @@ impl EvmClient {
     /// Get transaction history for an address
     pub async fn get_transaction_history(
         &self,
-        chain_id: &str,
+        _chain_id: &str,  // Currently unused, kept for future implementation
         address: &str,
         limit: u64,
     ) -> Result<TransactionHistoryResponse> {
@@ -152,32 +154,4 @@ impl EvmClient {
         contract::is_evm_contract(&client, &rpc_url, address).await
     }
 
-    /// Estimate fees for a transaction
-    pub async fn estimate_fees(
-        &self,
-        chain_id: &str,
-        request: &crate::blockchain::models::EstimateFeesRequest,
-    ) -> Result<crate::blockchain::models::EstimateFeesResponse> {
-        let provider = self.get_provider(chain_id)?;
-
-        // Estimate gas
-        let from_addr = request.from.parse::<ethers_core::types::Address>()?;
-        let to_addr = request.to.parse::<ethers_core::types::Address>()?;
-        let value = ethers_core::types::U256::from_dec_str(&request.amount)?;
-
-        let tx = ethers_core::types::TransactionRequest::new()
-            .from(from_addr)
-            .to(to_addr)
-            .value(value);
-
-        let gas_estimate = provider.estimate_gas(&tx.into(), None).await?;
-        let gas_price = provider.get_gas_price().await?;
-
-        Ok(crate::blockchain::models::EstimateFeesResponse {
-            estimated_gas: gas_estimate.to_string(),
-            gas_price: gas_price.to_string(),
-            total_fee: (gas_estimate * gas_price).to_string(),
-            denom: "wei".to_string(),
-        })
-    }
 }

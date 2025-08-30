@@ -3,9 +3,10 @@
 use anyhow::{Context, Result};
 use std::collections::HashMap;
 use std::env;
+use tracing::{info, warn};
 
 // A struct to hold all configuration, loaded once at startup from the .env file.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Config {
     // Server settings
     pub port: u16,
@@ -54,47 +55,36 @@ impl Config {
         // Load variables from the .env file into the environment
         dotenvy::dotenv().ok();
 
-        // Try to load from environment variable, otherwise use hardcoded supported chains
-        let chain_rpc_urls = if let Ok(rpc_urls_str) = env::var("CHAIN_RPC_URLS") {
-            match serde_json::from_str::<HashMap<String, String>>(&rpc_urls_str) {
-                Ok(urls) => urls,
-                Err(_) => {
-                    // Fallback to hardcoded chains if JSON parsing fails
-                    let mut urls = HashMap::new();
-                    urls.insert("1".to_string(), "https://eth.llamarpc.com".to_string()); // Ethereum Mainnet
-                    urls.insert(
-                        "11155111".to_string(),
-                        "https://rpc.sepolia.org".to_string(),
-                    ); // Sepolia Testnet
-                    urls.insert(
-                        "324".to_string(),
-                        "https://mainnet.era.zksync.io".to_string(),
-                    ); // zkSync Mainnet
-                    urls.insert(
-                        "300".to_string(),
-                        "https://sepolia.era.zksync.io".to_string(),
-                    ); // zkSync Sepolia Testnet
-                    urls
-                }
+        // Logger is initialized in main.rs
+
+        // Load chain RPC URLs with fallbacks
+        let mut chain_rpc_urls = HashMap::new();
+        
+        // Try to load from environment variable first
+        if let Ok(rpc_urls_str) = env::var("CHAIN_RPC_URLS") {
+            if let Ok(urls) = serde_json::from_str::<HashMap<String, String>>(&rpc_urls_str) {
+                chain_rpc_urls = urls;
+                info!("Loaded RPC URLs from CHAIN_RPC_URLS environment variable");
+            } else {
+                warn!("Failed to parse CHAIN_RPC_URLS, using default RPC URLs");
             }
-        } else {
-            // Use hardcoded supported chains
-            let mut urls = HashMap::new();
-            urls.insert("1".to_string(), "https://eth.llamarpc.com".to_string()); // Ethereum Mainnet
-            urls.insert(
-                "11155111".to_string(),
-                "https://rpc.sepolia.org".to_string(),
-            ); // Sepolia Testnet
-            urls.insert(
-                "324".to_string(),
-                "https://mainnet.era.zksync.io".to_string(),
-            ); // zkSync Mainnet
-            urls.insert(
-                "300".to_string(),
-                "https://sepolia.era.zksync.io".to_string(),
-            ); // zkSync Sepolia Testnet
-            urls
-        };
+        }
+
+        // Add default RPC URLs if not already set
+        let default_urls = vec![
+            ("1", "https://eth.llamarpc.com"), // Ethereum Mainnet
+            ("11155111", "https://rpc.sepolia.org"), // Sepolia Testnet
+            ("324", "https://mainnet.era.zksync.io"), // zkSync Mainnet
+            ("300", "https://sepolia.era.zksync.io"), // zkSync Sepolia Testnet
+        ];
+
+        for (chain_id, url) in default_urls {
+            chain_rpc_urls.entry(chain_id.to_string())
+                .or_insert_with(|| {
+                    info!("Using default RPC URL for chain {}: {}", chain_id, url);
+                    url.to_string()
+                });
+        }
 
         // Default to Ethereum mainnet chain ID (1) if not specified
         let default_chain_id = env::var("DEFAULT_CHAIN_ID")
@@ -143,13 +133,31 @@ impl Config {
                 .context("DEFAULT_GAS_PRICE must be a valid number")?,
             tx_private_key: env::var("TX_PRIVATE_KEY").ok(),
 
-            // External services
-            faucet_api_url: env::var("FAUCET_API_URL").ok(),
-            discord_api_url: env::var("DISCORD_API_URL").ok(),
-            discord_webhook_url: env::var("DISCORD_WEBHOOK_URL").ok(),
-            discord_bot_token: env::var("DISCORD_BOT_TOKEN").ok(),
-            discord_channel_id: env::var("DISCORD_CHANNEL_ID").ok(),
-            etherscan_api_key: env::var("ETHERSCAN_API_KEY").ok(),
+            // External services - load with debug logging
+            faucet_api_url: env::var("FAUCET_API_URL").ok().map(|url| {
+                info!("Faucet API URL configured");
+                url
+            }),
+            discord_api_url: env::var("DISCORD_API_URL").ok().map(|url| {
+                info!("Discord API URL configured");
+                url
+            }),
+            discord_webhook_url: env::var("DISCORD_WEBHOOK_URL").ok().map(|url| {
+                info!("Discord webhook URL configured");
+                url
+            }),
+            discord_bot_token: env::var("DISCORD_BOT_TOKEN").ok().map(|token| {
+                info!("Discord bot token configured");
+                token
+            }),
+            discord_channel_id: env::var("DISCORD_CHANNEL_ID").ok().map(|id| {
+                info!("Discord channel ID configured");
+                id
+            }),
+            etherscan_api_key: env::var("ETHERSCAN_API_KEY").ok().map(|key| {
+                info!("Etherscan API key configured");
+                key
+            }),
         })
     }
 }

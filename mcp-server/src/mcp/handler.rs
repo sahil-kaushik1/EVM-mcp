@@ -2233,7 +2233,7 @@ fn handle_tools_list(req: &Request) -> Response {
         },
         {
             "name": "transfer_nft_evm",
-            "description": "Transfer an ERC-721 token (placeholder).",
+            "description": "Transfer an ERC-721 token.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
