@@ -1,0 +1,190 @@
+warning: unused import: `Serialize`
+ --> src/api/faucet.rs:9:26
+  |
+9 | use serde::{Deserialize, Serialize};
+  |                          ^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `validator::Validate`
+  --> src/api/faucet.rs:12:5
+   |
+12 | use validator::Validate;
+   |     ^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `WalletStorage`, `self`, and `wallet_manager::WalletManager`
+  --> src/api/wallet.rs:13:9
+   |
+13 |         wallet_manager::WalletManager,
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+16 |     mcp::wallet_storage::{self, WalletStorage},
+   |                           ^^^^  ^^^^^^^^^^^^^
+
+warning: unused import: `std::fmt`
+  --> src/api/discord.rs:11:5
+   |
+11 | use std::fmt;
+   |     ^^^^^^^^
+
+warning: unused import: `warn`
+  --> src/api/discord.rs:13:35
+   |
+13 | use tracing::{debug, error, info, warn};
+   |                                   ^^^^
+
+warning: unused import: `balance`
+ --> src/blockchain/evm_client.rs:6:16
+  |
+6 |     services::{balance, contract, history, transactions, wallet},
+  |                ^^^^^^^
+
+warning: unused imports: `Address`, `H256`, `LocalWallet`, `Middleware`, `Signer`, and `utils::to_checksum`
+  --> src/blockchain/evm_client.rs:10:23
+   |
+10 |     providers::{Http, Middleware, Provider},
+   |                       ^^^^^^^^^^
+11 |     signers::{LocalWallet, Signer},
+   |               ^^^^^^^^^^^  ^^^^^^
+12 |     types::{Address, TransactionRequest, H256},
+   |             ^^^^^^^                      ^^^^
+13 |     utils::to_checksum,
+   |     ^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `Serialize`
+ --> src/blockchain/services/balance.rs:4:26
+  |
+4 | use serde::{Deserialize, Serialize};
+  |                          ^^^^^^^^^
+
+warning: unused import: `std::collections::HashMap`
+ --> src/blockchain/services/balance.rs:5:5
+  |
+5 | use std::collections::HashMap;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `tracing::error`
+ --> src/blockchain/services/balance.rs:6:5
+  |
+6 | use tracing::error;
+  |     ^^^^^^^^^^^^^^
+
+warning: unused import: `secret_key_to_address`
+ --> src/blockchain/services/wallet.rs:6:9
+  |
+6 |         secret_key_to_address,
+  |         ^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `EvmWallet`
+  --> src/blockchain/services/wallet.rs:15:5
+   |
+15 |     EvmWallet,
+   |     ^^^^^^^^^
+
+warning: unused import: `core::k256::ecdsa::SigningKey`
+ --> src/blockchain/wallet_manager.rs:6:5
+  |
+6 |     core::k256::ecdsa::SigningKey,
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `error`
+  --> src/blockchain/wallet_manager.rs:12:21
+   |
+12 | use tracing::{info, error};
+   |                     ^^^^^
+
+warning: unused import: `StoredWallet`
+  --> src/blockchain/wallet_manager.rs:16:42
+   |
+16 |     mcp::wallet_storage::{WalletStorage, StoredWallet},
+   |                                          ^^^^^^^^^^^^
+
+warning: unused import: `transactions`
+  --> src/mcp/handler.rs:44:20
+   |
+44 |         services::{transactions, wallet},
+   |                    ^^^^^^^^^^^^
+
+warning: unused imports: `core::k256::ecdsa::SigningKey` and `signers::LocalWallet`
+  --> src/mcp/wallet_storage.rs:9:5
+   |
+9  |     core::k256::ecdsa::SigningKey,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10 |     prelude::*,
+11 |     signers::LocalWallet,
+   |     ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `rand::rngs::OsRng`
+  --> src/mcp/wallet_storage.rs:13:5
+   |
+13 | use rand::rngs::OsRng;
+   |     ^^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::fs`
+  --> src/mcp/wallet_storage.rs:17:5
+   |
+17 | use std::fs;
+   |     ^^^^^^^
+
+warning: unused import: `std::str::FromStr`
+  --> src/mcp/wallet_storage.rs:19:5
+   |
+19 | use std::str::FromStr;
+   |     ^^^^^^^^^^^^^^^^^
+
+warning: unused import: `zeroize::Zeroizing`
+  --> src/mcp/wallet_storage.rs:20:5
+   |
+20 | use zeroize::Zeroizing;
+   |     ^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::blockchain::models::WalletResponse`
+  --> src/mcp/wallet_storage.rs:22:5
+   |
+22 | use crate::blockchain::models::WalletResponse;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: variable does not need to be mutable
+   --> src/mcp/wallet_storage.rs:283:13
+    |
+283 |         let mut storage: WalletStorage = serde_json::from_str(&content)
+    |             ----^^^^^^^
+    |             |
+    |             help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` on by default
+
+warning: method `get_provider` is never used
+  --> src/blockchain/evm_client.rs:46:8
+   |
+25 | impl EvmClient {
+   | -------------- method in this implementation
+...
+46 |     fn get_provider(&self, chain_id: &str) -> Result<Arc<Provider<Http>>> {
+   |        ^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: function `normalize_contract_code` is never used
+   --> src/blockchain/services/contract.rs:169:4
+    |
+169 | fn normalize_contract_code(v: Value) -> Value {
+    |    ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: structure field `mcpServers` should have a snake case name
+  --> src/config.rs:13:5
+   |
+13 |     mcpServers: HashMap<String, McpServerConfig>,
+   |     ^^^^^^^^^^ help: convert the identifier to snake case: `mcp_servers`
+   |
+   = note: `#[warn(non_snake_case)]` on by default
+
+warning: `evm-mcp-server` (lib) generated 26 warnings (run `cargo fix --lib -p evm-mcp-server` to apply 23 suggestions)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.18s
+     Running `target/debug/evm_mcp --mcp`
+[2m2025-08-30T21:06:18.328552Z[0m [32m INFO[0m [2mevm_mcp_server::config[0m[2m:[0m Using default RPC URL for chain 1: https://eth.llamarpc.com
+[2m2025-08-30T21:06:18.328616Z[0m [32m INFO[0m [2mevm_mcp_server::config[0m[2m:[0m Using default RPC URL for chain 11155111: https://rpc.sepolia.org
+[2m2025-08-30T21:06:18.328621Z[0m [32m INFO[0m [2mevm_mcp_server::config[0m[2m:[0m Using default RPC URL for chain 324: https://mainnet.era.zksync.io
+[2m2025-08-30T21:06:18.328634Z[0m [32m INFO[0m [2mevm_mcp_server::config[0m[2m:[0m Using default RPC URL for chain 300: https://sepolia.era.zksync.io
+[2m2025-08-30T21:06:18.328763Z[0m [32m INFO[0m [2mevm_mcp_server::config[0m[2m:[0m Loaded Etherscan API key from mcp.json
+[2m2025-08-30T21:06:18.328774Z[0m [32m INFO[0m [2mevm_mcp_server::config[0m[2m:[0m Etherscan API key configured
